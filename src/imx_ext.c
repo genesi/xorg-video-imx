@@ -46,7 +46,7 @@ Proc_IMX_EXT_GetPixmapPhysAddr(ClientPtr client)
 
 	/* Find the pixmap */
 	PixmapPtr pPixmap;
-	int rc = dixLookupResource((pointer*)&pPixmap, stuff->pixmap, RT_PIXMAP, client,
+	int rc = dixLookupResourceByType((pointer*)&pPixmap, stuff->pixmap, RT_PIXMAP, client,
 					DixGetAttrAccess);
 	if (Success == rc)
 	{
