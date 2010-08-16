@@ -921,7 +921,7 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 
 		/* Change the graphics context properties based on the PrepareSolid parameters. */
 		CARD32 parms[3] = {fPtr->solidALU, fPtr->solidPlaneMask, fPtr->solidColor};
-		ChangeGC(fPtr->pGC, GCFunction | GCPlaneMask | GCForeground, parms);
+		dixChangeGC(NullClient, fPtr->pGC, GCFunction | GCPlaneMask | GCForeground, parms, NULL);
 
 		/* Make sure the graphics context is properly setup. */
 		ValidateGC(&fPtr->pPixmapDst->drawable, fPtr->pGC);
@@ -1204,7 +1204,7 @@ Z160EXACopy(PixmapPtr pPixmapDst, int srcX, int srcY, int dstX, int dstY, int wi
 
 		/* Change the graphics context properties based on the PrepareCopy parameters. */
 		CARD32 parms[2] = {fPtr->solidALU, fPtr->solidPlaneMask};
-		ChangeGC(fPtr->pGC, GCFunction | GCPlaneMask, parms);
+		dixChangeGC(NullClient, fPtr->pGC, GCFunction | GCPlaneMask, parms, NULL);
 
 		/* Make sure the graphics context is properly setup. */
 		ValidateGC(&fPtr->pPixmapDst->drawable, fPtr->pGC);
