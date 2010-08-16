@@ -39,8 +39,11 @@
 /* for visuals */
 #include "fb.h"
 
+/* Not needed with Xorg 1.7 */
+#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) <6
 #include "xf86Resources.h"
 #include "xf86RAC.h"
+#endif
 
 #include "fbdevhw.h"
 
@@ -377,6 +380,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 
 	fPtr->pEnt = xf86GetEntityInfo(pScrn->entityList[0]);
 
+#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 	pScrn->racMemFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
 	/* XXX Is this right?  Can probably remove RAC_FB */
 	pScrn->racIoFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
@@ -387,6 +391,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 		   "xf86RegisterResources() found resource conflicts\n");
 		return FALSE;
 	}
+#endif
 
 	/* open device */
 	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
