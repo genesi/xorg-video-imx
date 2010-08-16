@@ -29,7 +29,7 @@ AC_INIT([xf86-video-imx],
 AC_CONFIG_SRCDIR([Makefile.am])
 AM_CONFIG_HEADER([config.h])
 AC_CONFIG_AUX_DIR(.)
-AC_CONFIG_MACRO_DIR([/usr/share/aclocal])
+AC_CONFIG_MACRO_DIR([m4])
 
 AM_INIT_AUTOMAKE([dist-bzip2])
 
