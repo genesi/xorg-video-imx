@@ -11,7 +11,6 @@
 
 #define	IMX_EXA_ENABLE_OFFSCREEN_PIXMAPS	1	/* offscreen pixmap support? */
 #define	IMX_EXA_ENABLE_SOLID			1	/* solid fill acceleration? */
-#define	IMX_EXA_ENABLE_EXA_INTERNAL		1	/* EXA code is part of this driver */
 
 /* Set minimum size (pixel area) for accelerating operations. */
 #define	IMX_EXA_MIN_PIXEL_AREA_SOLID		150
@@ -2005,9 +2004,6 @@ Z160EXAWaitMarker(ScreenPtr pScreen, int marker)
 /* Called by IMXPreInit */
 Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn, CARD32 gpuIdleTimeout)
 {
-
-#if !IMX_EXA_ENABLE_EXA_INTERNAL
-
 	XF86ModReqInfo req;
 	int errmaj, errmin;
 	memset(&req, 0, sizeof(req));
@@ -2018,9 +2014,6 @@ Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn, CARD32 gpuIdleTimeout)
 		LoaderErrorMsg(NULL, "exa", errmaj, errmin);
 		return FALSE;
 	}
-
-	/* Load required EXA symbols */
-#endif
 
 	/* initialize state of Z160 data structures */
 	IMXPtr imxPtr = IMXPTR(pScrn);
