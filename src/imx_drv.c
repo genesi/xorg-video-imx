@@ -151,67 +151,6 @@ static const OptionInfoRec IMXOptions[] = {
 
 /* -------------------------------------------------------------------- */
 
-static const char *afbSymbols[] = {
-	"afbScreenInit",
-	"afbCreateDefColormap",
-	NULL
-};
-
-static const char *fbSymbols[] = {
-	"fbScreenInit",
-	"fbPictureInit",
-	NULL
-};
-
-static const char *shadowSymbols[] = {
-	"shadowAdd",
-	"shadowInit",
-	"shadowSetup",
-	"shadowUpdatePacked",
-	"shadowUpdatePackedWeak",
-	"shadowUpdateRotatePacked",
-	"shadowUpdateRotatePackedWeak",
-	NULL
-};
-
-static const char *fbdevHWSymbols[] = {
-	"fbdevHWInit",
-	"fbdevHWProbe",
-	"fbdevHWSetVideoModes",
-	"fbdevHWUseBuildinMode",
-
-	"fbdevHWGetDepth",
-	"fbdevHWGetLineLength",
-	"fbdevHWGetName",
-	"fbdevHWGetType",
-	"fbdevHWGetVidmem",
-	"fbdevHWLinearOffset",
-	"fbdevHWLoadPalette",
-	"fbdevHWMapVidmem",
-	"fbdevHWUnmapVidmem",
-
-	/* colormap */
-	"fbdevHWLoadPalette",
-	"fbdevHWLoadPaletteWeak",
-
-	/* ScrnInfo hooks */
-	"fbdevHWAdjustFrameWeak",
-	"fbdevHWEnterVTWeak",
-	"fbdevHWLeaveVTWeak",
-	"fbdevHWModeInit",
-	"fbdevHWRestore",
-	"fbdevHWSave",
-	"fbdevHWSaveScreen",
-	"fbdevHWSaveScreenWeak",
-	"fbdevHWSwitchModeWeak",
-	"fbdevHWValidModeWeak",
-
-	"fbdevHWDPMSSet",
-	"fbdevHWDPMSSetWeak",
-
-	NULL
-};
-
 #ifdef XFree86LOADER
 
 MODULESETUPPROTO(IMXSetup);
@@ -240,8 +179,6 @@ IMXSetup(pointer module, pointer opts, int *errmaj, int *errmin)
 	if (!setupDone) {
 		setupDone = TRUE;
 		xf86AddDriver(&IMX, module, HaveDriverFuncs);
-		LoaderRefSymLists(afbSymbols, fbSymbols,
-				  shadowSymbols, fbdevHWSymbols, NULL);
 		return (pointer)1;
 	} else {
 		if (errmaj) *errmaj = LDR_ONCEONLY;
@@ -314,8 +251,6 @@ IMXProbe(DriverPtr drv, int flags)
 	if (!xf86LoadDrvSubModule(drv, "fbdevhw"))
 	    return FALSE;
 	    
-	xf86LoaderReqSymLists(fbdevHWSymbols, NULL);
-	
 	for (i = 0; i < numDevSections; i++) {
 
 	    dev = xf86FindOptionValue(devSections[i]->options,"imx");
@@ -362,7 +297,6 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 	IMXPtr fPtr;
 	int default_depth, fbbpp;
 	const char *mod = NULL, *s;
-	const char **syms = NULL;
 	int type;
 
 	if (flags & PROBE_DETECT) return FALSE;
@@ -544,7 +478,6 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 		case 24:
 		case 32:
 			mod = "fb";
-			syms = fbSymbols;
 			break;
 		default:
 			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
@@ -577,10 +510,6 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 		IMXFreeRec(pScrn);
 		return FALSE;
 	}
-	if (mod && syms) {
-		xf86LoaderReqSymLists(syms, NULL);
-	}
-
 	/* Perform EXA pre-init */
 	if (fPtr->useAccel) {
 
@@ -602,7 +531,6 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 			IMXFreeRec(pScrn);
 			return FALSE;
 		}
-		xf86LoaderReqSymLists(shadowSymbols, NULL);
 	}
 
 	TRACE_EXIT("PreInit");

@@ -125,27 +125,6 @@ typedef struct _IMXEXARec {
 
 #define IMXEXAPTR(p) ((IMXEXAPtr)((p)->exaDriverPrivate))
 
-#if !IMX_EXA_ENABLE_EXA_INTERNAL
-
-/* Function symbols dynamically loaded from EXA module. */
-static const char *exaSymbols[] = {
-	"exaDriverAlloc",
-	"exaDriverInit",
-	"exaDriverFini",
-	"exaOffscreenAlloc",
-	"exaOffscreenFree",
-	"exaGetPixmapOffset",
-	"exaGetPixmapDriverPrivate",
-	"exaGetPixmapPitch",
-	"exaGetPixmapSize",
-	"exaGetDrawablePixmap",
-	"exaMarkSync",
-	"exaWaitSync",
-	NULL
-};
-
-#endif
-
 /* Prototype for function not defined in exa.h */
 extern PixmapPtr exaGetDrawablePixmap(DrawablePtr pDrawable);
 
@@ -2041,7 +2020,6 @@ Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn, CARD32 gpuIdleTimeout)
 	}
 
 	/* Load required EXA symbols */
-	xf86LoaderReqSymLists(exaSymbols, NULL);
 #endif
 
 	/* initialize state of Z160 data structures */
