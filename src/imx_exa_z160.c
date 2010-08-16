@@ -125,8 +125,15 @@ typedef struct _IMXEXARec {
 #define IMXEXAPTR(p) ((IMXEXAPtr)((p)->exaDriverPrivate))
 
 /* Prototype for function not defined in exa.h */
-extern PixmapPtr exaGetDrawablePixmap(DrawablePtr pDrawable);
-
+static PixmapPtr
+exaGetDrawablePixmap(DrawablePtr pDrawable)
+{
+     if (!pDrawable) return NULL;
+     if (pDrawable->type == DRAWABLE_WINDOW)
+        return pDrawable->pScreen->GetWindowPixmap ((WindowPtr) pDrawable);
+     else
+        return (PixmapPtr) pDrawable;
+}
 
 /* Called by IMXGetRec */
 void IMX_EXA_GetRec(ScrnInfoPtr pScrn)
