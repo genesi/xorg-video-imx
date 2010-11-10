@@ -21,7 +21,11 @@
 #include "config.h"
 #endif
 
+#include <errno.h>
+#include <fcntl.h>
 #include <string.h>
+#include <linux/fb.h>
+#include <linux/mxcfb.h>
 
 /* all driver need this */
 #include "xf86.h"
@@ -84,7 +88,7 @@ extern int MXXVInitializeAdaptor(ScrnInfoPtr, XF86VideoAdaptorPtr **);
 /* for EXA (X acceleration) */
 extern void IMX_EXA_GetRec(ScrnInfoPtr pScrn);
 extern void IMX_EXA_FreeRec(ScrnInfoPtr pScrn);
-extern Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn, CARD32 gpuIdleTimeout);
+extern Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn);
 extern Bool IMX_EXA_ScreenInit(int scrnIndex, ScreenPtr pScreen);
 extern Bool IMX_EXA_CloseScreen(int scrnIndex, ScreenPtr pScreen);
 
@@ -105,7 +109,7 @@ static int pix24bpp = 0;
 
 #define IMX_VERSION		1000
 #define IMX_NAME		"IMX"
-#define IMX_DRIVER_NAME	"imx"
+#define IMX_DRIVER_NAME		"imx"
 
 _X_EXPORT DriverRec IMX = {
 	IMX_VERSION,
@@ -130,20 +134,32 @@ static SymTabRec IMXChipsets[] = {
 
 /* Supported options */
 typedef enum {
+	OPTION_FBDEV,
+	OPTION_FORMAT_EPDC,
+	OPTION_NOACCEL,
+	OPTION_ACCELMETHOD,
 	OPTION_SHADOW_FB,
 	OPTION_ROTATE,
-	OPTION_FBDEV,
 	OPTION_DEBUG,
-	OPTION_GPU_IDLE_TIMEOUT
 } IMXOpts;
 
+#define	OPTION_STR_FBDEV	"fbdev"
+#define	OPTION_STR_FORMAT_EPDC	"FormatEPDC"
+#define	OPTION_STR_NOACCEL	"NoAccel"
+#define	OPTION_STR_ACCELMETHOD	"AccelMethod"
+#define	OPTION_STR_SHADOW_FB	"ShadowFB"
+#define	OPTION_STR_ROTATE	"Rotate"
+#define	OPTION_STR_DEBUG	"debug"
+
 static const OptionInfoRec IMXOptions[] = {
-	{ OPTION_SHADOW_FB,	"ShadowFB",	OPTV_BOOLEAN,	{0},	FALSE },
-	{ OPTION_ROTATE,	"Rotate",	OPTV_STRING,	{0},	FALSE },
-	{ OPTION_FBDEV,		"fbdev",	OPTV_STRING,	{0},	FALSE },
-	{ OPTION_DEBUG,		"debug",	OPTV_BOOLEAN,	{0},	FALSE },
-	{ OPTION_GPU_IDLE_TIMEOUT,	"GPUIdleTimeout",	OPTV_INTEGER,	{1000},	FALSE },
-	{ -1,			NULL,		OPTV_NONE,	{0},	FALSE }
+	{ OPTION_FBDEV,		OPTION_STR_FBDEV,	OPTV_STRING,	{0},	FALSE },
+	{ OPTION_FORMAT_EPDC,	OPTION_STR_FORMAT_EPDC,	OPTV_STRING,	{0},	FALSE },
+	{ OPTION_NOACCEL,	OPTION_STR_NOACCEL,	OPTV_BOOLEAN,	{0},	FALSE },
+	{ OPTION_ACCELMETHOD,	OPTION_STR_ACCELMETHOD,	OPTV_STRING,	{0},	FALSE },
+	{ OPTION_SHADOW_FB,	OPTION_STR_SHADOW_FB,	OPTV_BOOLEAN,	{0},	FALSE },
+	{ OPTION_ROTATE,	OPTION_STR_ROTATE,	OPTV_STRING,	{0},	FALSE },
+	{ OPTION_DEBUG,		OPTION_STR_DEBUG,	OPTV_BOOLEAN,	{0},	FALSE },
+	{ -1,			NULL,			OPTV_NONE,	{0},	FALSE }
 };
 
 /* -------------------------------------------------------------------- */
@@ -315,7 +331,7 @@ IMXProbe(DriverPtr drv, int flags)
 	
 	for (i = 0; i < numDevSections; i++) {
 
-	    dev = xf86FindOptionValue(devSections[i]->options,"imx");
+	    dev = xf86FindOptionValue(devSections[i]->options,OPTION_STR_FBDEV);
 	    if (fbdevHWProbe(NULL,dev,NULL)) {
 			int entity;
 			pScrn = NULL;
@@ -354,6 +370,104 @@ IMXProbe(DriverPtr drv, int flags)
 }
 
 static Bool
+IMXPreInitEPDC(ScrnInfoPtr pScrn, IMXPtr fPtr)
+{
+	Bool result = TRUE;
+
+	/* access name of device to open for fbdev */
+	char* dev = xf86FindOptionValue(fPtr->pEnt->device->options,OPTION_STR_FBDEV);
+
+	int fd = -1;
+
+	/* try argument (from XF86Config) first */
+	if (dev) {
+	    fd = open(dev,O_RDWR,0);
+	} else {
+	    /* second: environment variable */
+	    dev = getenv("FRAMEBUFFER");
+	    if ((NULL == dev) || ((fd = open(dev,O_RDWR,0)) == -1)) {
+		/* last try: default device */
+		dev = "/dev/fb0";
+		fd = open(dev,O_RDWR,0);
+	    }
+	}
+
+	/* check if frame buffer device was opened */
+	if (fd == -1) {
+		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+			"open %s: %s\n", dev, strerror(errno));
+		result = FALSE;
+		goto error;
+	}
+
+
+	/* get frame buffer fixed screen info */
+	struct fb_fix_screeninfo fbFixScreenInfo;
+	if (-1 == ioctl(fd,FBIOGET_FSCREENINFO,(void*)(&fbFixScreenInfo))) {
+		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+			   "FBIOGET_FSCREENINFO: %s\n", strerror(errno));
+		result = FALSE;
+		goto error;
+	}
+
+	/* detect if the frame buffer is the EPDC */
+	if (0 == strcmp("mxc_epdc_fb", fbFixScreenInfo.id)) {
+
+		/* get frame buffer variable screen info */
+		struct fb_var_screeninfo fbVarScreenInfo;
+		if (-1 == ioctl(fd,FBIOGET_VSCREENINFO,(void*)(&fbVarScreenInfo))) {
+			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+				   "FBIOGET_VSCREENINFO: %s\n", strerror(errno));
+			result = FALSE;
+			goto error;
+		}
+
+		/* find the requested EPDC format and change if requested */
+		char* strFormat = xf86FindOptionValue(fPtr->pEnt->device->options,OPTION_STR_FORMAT_EPDC);
+		if (NULL != strFormat) {
+			if (0 == xf86NameCmp(strFormat, "RGB565")) {
+				fbVarScreenInfo.grayscale = 0;
+				fbVarScreenInfo.bits_per_pixel = 16;
+			}
+			else if (0 == xf86NameCmp(strFormat, "Y8")) {
+				fbVarScreenInfo.grayscale = GRAYSCALE_8BIT;
+				fbVarScreenInfo.bits_per_pixel = 8;
+			}
+			else if (0 == xf86NameCmp(strFormat, "Y8INV")) {
+				fbVarScreenInfo.grayscale = GRAYSCALE_8BIT_INVERTED;
+				fbVarScreenInfo.bits_per_pixel = 8;
+			}
+			else {
+				xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
+					"\"%s\" is not a valid value for Option \"%s\"\n", strFormat, OPTION_STR_FORMAT_EPDC);
+				xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+					"valid options are \"RGB565\", \"Y8\" and \"Y8INV\"\n");
+				result = FALSE;
+				goto error;
+			}
+
+		}
+
+		/* it is required to initialize the device */
+		/* use force activation just in case nothing changed */
+		fbVarScreenInfo.activate = FB_ACTIVATE_FORCE;
+		if (-1 == ioctl(fd,FBIOPUT_VSCREENINFO,(void*)(&fbVarScreenInfo))) {
+			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+				   "FBIOPUT_VSCREENINFO: %s\n", strerror(errno));
+			result = FALSE;
+			goto error;
+		}
+	}
+
+error:
+	if (-1 != fd) {
+		close(fd);
+	}
+
+	return result;
+}
+
+static Bool
 IMXPreInit(ScrnInfoPtr pScrn, int flags)
 {
 	IMXPtr fPtr;
@@ -388,8 +502,13 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 		return FALSE;
 	}
 
+	/* perform pre-init for EPDC device if available */
+	if (!IMXPreInitEPDC(pScrn, fPtr)) {
+		return FALSE;
+	}
+
 	/* open device */
-	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
+	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(fPtr->pEnt->device->options, OPTION_STR_FBDEV)))
 		return FALSE;
 	default_depth = fbdevHWGetDepth(pScrn,&fbbpp);
 	if (!xf86SetDepthBpp(pScrn, default_depth, default_depth, fbbpp,
@@ -430,7 +549,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 
 	pScrn->progClock = TRUE;
 	pScrn->rgbBits   = 8;
-	pScrn->chipset   = "fbdev";
+	pScrn->chipset   = "imx";
 	pScrn->videoRam  = fbdevHWGetVidmem(pScrn);
 
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO, "hardware: %s (video memory:"
@@ -443,11 +562,22 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 	memcpy(fPtr->Options, IMXOptions, sizeof(IMXOptions));
 	xf86ProcessOptions(pScrn->scrnIndex, fPtr->pEnt->device->options, fPtr->Options);
 
-	/* AccelMethod option */
+	/* NoAccel option */
 	fPtr->useAccel = TRUE;
+	if (xf86ReturnOptValBool(fPtr->Options, OPTION_NOACCEL, FALSE)) {
+		fPtr->useAccel = FALSE;
+	}
+
+	/* AccelMethod option */
+	if (fPtr->useAccel) {
+		s = xf86GetOptValString(fPtr->Options, OPTION_ACCELMETHOD);
+		if ((NULL != s) && (0 != xf86NameCmp(s, "EXA"))) {
+			fPtr->useAccel = FALSE;
+		}
+	} 
 
 	/* use shadow framebuffer by default */
-	/* TODO: DISABLE SHADOW BUFFERS WHEN ACCELERATING */
+	/* DISABLE SHADOW BUFFERS WHEN ACCELERATING */
 	fPtr->shadowFB = FALSE;
 	if (!fPtr->useAccel) {
 
@@ -459,39 +589,40 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 
 	/* rotation */
 	fPtr->rotate = IMX_ROTATE_NONE;
-	/* TODO: DISABLE SCREEN ROTATION WHEN ACCELERATING */
-	if (!fPtr->useAccel) {
-		if ((s = xf86GetOptValString(fPtr->Options, OPTION_ROTATE)))
-		{
-		  if(!xf86NameCmp(s, "CW"))
-		  {
-		    fPtr->shadowFB = TRUE;
-		    fPtr->rotate = IMX_ROTATE_CW;
-		    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-			       "rotating screen clockwise\n");
-		  }
-		  else if(!xf86NameCmp(s, "CCW"))
-		  {
-		    fPtr->shadowFB = TRUE;
-		    fPtr->rotate = IMX_ROTATE_CCW;
-		    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-			       "rotating screen counter-clockwise\n");
-		  }
-		  else if(!xf86NameCmp(s, "UD"))
-		  {
-		    fPtr->shadowFB = TRUE;
-		    fPtr->rotate = IMX_ROTATE_UD;
-		    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-			       "rotating screen upside-down\n");
-		  }
-		  else
-		  {
-		    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-			       "\"%s\" is not a valid value for Option \"Rotate\"\n", s);
-		    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-			       "valid options are \"CW\", \"CCW\" and \"UD\"\n");
-		  }
-		}
+	/* SCREEN ROTATION DISABLES ACCELERATION */
+	if ((s = xf86GetOptValString(fPtr->Options, OPTION_ROTATE)))
+	{
+	  if(!xf86NameCmp(s, "CW"))
+	  {
+	    fPtr->shadowFB = TRUE;
+	    fPtr->rotate = IMX_ROTATE_CW;
+            fPtr->useAccel = FALSE;
+	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
+		       "rotating screen clockwise\n");
+	  }
+	  else if(!xf86NameCmp(s, "CCW"))
+	  {
+	    fPtr->shadowFB = TRUE;
+	    fPtr->rotate = IMX_ROTATE_CCW;
+            fPtr->useAccel = FALSE;
+	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
+		       "rotating screen counter-clockwise\n");
+	  }
+	  else if(!xf86NameCmp(s, "UD"))
+	  {
+	    fPtr->shadowFB = TRUE;
+	    fPtr->rotate = IMX_ROTATE_UD;
+            fPtr->useAccel = FALSE;
+	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
+		       "rotating screen upside-down\n");
+	  }
+	  else
+	  {
+	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
+		       "\"%s\" is not a valid value for Option \"Rotate\"\n", s);
+	    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+		       "valid options are \"CW\", \"CCW\" and \"UD\"\n");
+	  }
 	}
 
 	/* select video modes */
@@ -579,11 +710,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 	/* Perform EXA pre-init */
 	if (fPtr->useAccel) {
 
-		/* GPU idle time option */
-		int gpuIdleTimeout;
-		xf86GetOptValInteger(fPtr->Options, OPTION_GPU_IDLE_TIMEOUT, &gpuIdleTimeout);
-
-		if (!IMX_EXA_PreInit(pScrn, gpuIdleTimeout)) {
+		if (!IMX_EXA_PreInit(pScrn)) {
 			IMXFreeRec(pScrn);
 			return FALSE;
 		}

@@ -72,13 +72,6 @@ typedef struct _IMXEXARec {
 	Z160Buffer			z160BufferSrc;	
 	unsigned long			z160Color;
 
-	/* Driver option(s) passed in IMX_EXA_PreInit function */
-	CARD32				gpuIdleTimeout;
-
-	/* Flag set if the Block and Wakeup handlers are installed */
-	/* to be used for checking GPU idle timeouts. */
-	Bool				gpuIdleCheckInstalled;
-
 	/* Flag set if GPU has been setup for solid, copy, or */
 	/* composite operation. */
 	Bool				gpuOpSetup;
@@ -86,18 +79,6 @@ typedef struct _IMXEXARec {
 	/* Flag set if solid/copy/composite Prepare has been called and */
 	/* operation is completed (and flag cleared) when Done called. */
 	Bool				gpuOpBusy;
-
-	/* Time in milliseconds when GPU idle checking begins */
-	/* Only valid when gpuOpBusy is not set. */
-	CARD32				gpuIdleStartTime;
-
-	/* Flag set if GPU idle timeout exceeded with no GPU operations */
-	/* occurring.  If flag set in Block handler then the GPU is */
-	/* disconnected. */
-	Bool				gpuIdleDetected;
-
-	/* Time in milliseconds when GPU is disabled. */
-	CARD32				gpuIdleDisableTime;
 
 	/* Graphics context for software fallback in solid/copy/composite */
 	GCPtr				pGC;
@@ -165,14 +146,9 @@ void IMX_EXA_GetRec(ScrnInfoPtr pScrn)
 
 	fPtr->gpuContext = NULL;
 
-	fPtr->gpuIdleTimeout = 0;
-	fPtr->gpuIdleCheckInstalled = FALSE;
 	fPtr->gpuSynced = FALSE;
 	fPtr->gpuOpSetup = FALSE;
 	fPtr->gpuOpBusy = FALSE;
-	fPtr->gpuIdleDetected = FALSE;
-	fPtr->gpuIdleStartTime = GetTimeInMillis();
-	fPtr->gpuIdleDisableTime = 0;
 
 	fPtr->savePixmapPtr[EXA_PREPARE_DEST] = NULL;
 	fPtr->savePixmapPtr[EXA_PREPARE_SRC] = NULL;
@@ -551,7 +527,6 @@ Z160ContextRelease(IMXEXAPtr fPtr)
 		z160_sync(fPtr->gpuContext);
 		z160_disconnect(fPtr->gpuContext);
 		fPtr->gpuContext = NULL;
-		fPtr->gpuIdleDisableTime = GetTimeInMillis();
 	}
 }
 
@@ -580,8 +555,6 @@ Z160ContextGet(IMXEXAPtr fPtr)
 		fPtr->gpuSynced = FALSE;
 		fPtr->gpuOpSetup = FALSE;
 		fPtr->gpuOpBusy = FALSE;
-		fPtr->gpuIdleDetected = FALSE;
-		fPtr->gpuIdleStartTime = GetTimeInMillis();
 	}
 
 	return fPtr->gpuContext;
@@ -591,10 +564,9 @@ static void
 Z160MarkOperationBusy(IMXEXAPtr fPtr, Bool busy)
 {
 	fPtr->gpuOpBusy = busy;
-	fPtr->gpuIdleDetected = FALSE;
 
 	if (!busy) {
-		fPtr->gpuIdleStartTime = GetTimeInMillis();
+		// Nothing to do
 	}
 }
 
@@ -637,79 +609,6 @@ Z160Sync(IMXEXAPtr fPtr)
 		/* Update state */
 		fPtr->gpuSynced = TRUE;
 		Z160MarkOperationBusy(fPtr, FALSE);
-	}
-}
-
-static void
-Z160ScreenBlockHandler(pointer blockData, OSTimePtr pTimeout, pointer pReadmask)
-{
-	/* Cast the block data as the driver-specific screen data structure. */
-	IMXEXAPtr fPtr = (IMXEXAPtr)blockData;
-
-	/* Process idle GPU timeout check only when GPU is currently */
-	/* connected AND GPU not busy in an operation setup AND */
-	/* GPU idle timeout value is specified. */
-	if ((NULL != fPtr->gpuContext) &&
-		!fPtr->gpuOpBusy &&
-			(fPtr->gpuIdleTimeout > 0)) {
-
-		/* See comment in wakeup handler. */
-
-		/* Was idle timeout set in wakeup handler? */
-		if (fPtr->gpuIdleDetected) {
-
-			fPtr->gpuIdleDetected = FALSE;
-#if 1
-			z160_disable_clocks(fPtr->gpuContext);
-#else
-			fPtr->gpuOpBusy = TRUE;
-#endif
-		} else {
-
-			/* Need to adjust timeout to call wakeup handler. */
-			CARD32 now = GetTimeInMillis();
-			CARD32 limit =
-				fPtr->gpuIdleStartTime + fPtr->gpuIdleTimeout;
-			CARD32 wait = 1;
-			if (now < limit) {
-				wait = limit - now;
-			}
-			AdjustWaitForDelay(pTimeout, wait);
-		}
-	}
-}
-
-static void
-Z160ScreenWakeupHandler(pointer blockData, int result, pointer pReadmask)
-{
-	/* Cast the block data as the driver-specific screen data structure. */
-	IMXEXAPtr fPtr = (IMXEXAPtr)blockData;
-
-	/* Process idle GPU timeout check only when GPU is currently */
-	/* connected AND GPU not busy in an operation setup AND */
-	/* GPU idle timeout value is specified. */
-	if ((NULL != fPtr->gpuContext) &&
-		!fPtr->gpuOpBusy &&
-			(fPtr->gpuIdleTimeout > 0)) {
-
-		/* Get the current time in milliseconds. */
-		CARD32 now = GetTimeInMillis();
-
-		/* The wakeup handler is called after an event occurs. */
-		/* Because this handler is called before events are */
-		/* processed, we don't want to disable the GPU only */
-		/* to possibly have it be reenabled by a drawing related */
-		/* event (or request).  So, just mark the fact that */
-		/* the GPU idle timeout occurs and wait to check */
-		/* in the block handler. */
-		if (now > (fPtr->gpuIdleStartTime + fPtr->gpuIdleTimeout)) {
-
-			fPtr->gpuIdleDetected = TRUE;
-
-		} else {
-
-			fPtr->gpuIdleDetected = FALSE;
-		}
 	}
 }
 
@@ -2024,7 +1923,7 @@ Z160EXAWaitMarker(ScreenPtr pScreen, int marker)
 
 
 /* Called by IMXPreInit */
-Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn, CARD32 gpuIdleTimeout)
+Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn)
 {
 
 #if !IMX_EXA_ENABLE_EXA_INTERNAL
@@ -2048,12 +1947,6 @@ Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn, CARD32 gpuIdleTimeout)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 	fPtr->gpuContext = NULL;
-	if (gpuIdleTimeout > 0) {
-		if (gpuIdleTimeout < 1000) {
-			gpuIdleTimeout = 1000;
-		}
-		fPtr->gpuIdleTimeout = gpuIdleTimeout;
-	}
 
 	return TRUE;
 }
@@ -2173,25 +2066,6 @@ Bool IMX_EXA_ScreenInit(int scrnIndex, ScreenPtr pScreen)
 			Z160ContextRelease(fPtr);
 			return FALSE;
 		}
-
-		/* Install Block and Wakeup handlers to check */
-		/* timeout for GPU idle. */
-		if (fPtr->gpuIdleTimeout > 0) {
-			if (!RegisterBlockAndWakeupHandlers(
-				Z160ScreenBlockHandler,
-				Z160ScreenWakeupHandler,
-				fPtr)) {				
-
-				xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "GPU idle timeout handlers failed to install.\n");
-
-				exaDriverFini(pScreen);
-				xfree(fPtr->exaDriverPtr);
-				fPtr->exaDriverPtr = NULL;
-				Z160ContextRelease(fPtr);
-				return FALSE;
-			}
-			fPtr->gpuIdleCheckInstalled;
-		}
 	}
 
 	return TRUE;
@@ -2247,17 +2121,6 @@ Bool IMX_EXA_CloseScreen(int scrnIndex, ScreenPtr pScreen)
 		"Z160 Xorg driver: %d = num screen copy rects > 100000 pixels\n",
 		fPtr->numScreenCopyRectLarge);
 #endif
-
-	/* Uninstall GPU idle timeout check handlers */
-	if (fPtr->gpuIdleCheckInstalled) {
-
-		RemoveBlockandWakeupHandlers(
-			Z160ScreenBlockHandler,
-			Z160ScreenWakeupHandler,
-			fPtr);
-
-		fPtr->gpuIdleCheckInstalled = FALSE;
-	}
 
 	/* EXA cleanup */
 	if (fPtr->exaDriverPtr) {
