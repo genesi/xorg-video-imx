@@ -1,13 +1,25 @@
 /*
- * Copyright 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
- */
-/*
- * The code contained herein is licensed under the GNU Lesser General
- * Public License.  You may obtain a copy of the GNU Lesser General
- * Public License Version 2.1 or later at the following locations:
+ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc.  All Rights Reserved.
+ * 
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation 
+ * files (the "Software"), to deal in the Software without 
+ * restriction, including without limitation the rights to use, copy, 
+ * modify, merge, publish, distribute, sublicense, and/or sell copies 
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
  *
- * http://www.opensource.org/licenses/lgpl-license.html
- * http://www.gnu.org/copyleft/lgpl.html
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN 
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+ * SOFTWARE.
  */
 
 /*
@@ -43,8 +55,7 @@
 /* for visuals */
 #include "fb.h"
 
-/* Not needed with Xorg 1.7 */
-#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) <6
+#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 #include "xf86Resources.h"
 #include "xf86RAC.h"
 #endif
@@ -94,6 +105,7 @@ extern void IMX_EXA_FreeRec(ScrnInfoPtr pScrn);
 extern Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn);
 extern Bool IMX_EXA_ScreenInit(int scrnIndex, ScreenPtr pScreen);
 extern Bool IMX_EXA_CloseScreen(int scrnIndex, ScreenPtr pScreen);
+extern Bool IMX_EXA_GetPixmapProperties(PixmapPtr pPixmap, void** pPhysAddr, int* pPitch);
 
 /* for X extension */
 extern void IMX_EXT_Init();
@@ -410,7 +422,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 {
 	IMXPtr fPtr;
 	int default_depth, fbbpp;
-	const char *mod = NULL, *s;
+	const char *s;
 	int type;
 
 	if (flags & PROBE_DETECT) return FALSE;
@@ -428,7 +440,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 
 	fPtr->pEnt = xf86GetEntityInfo(pScrn->entityList[0]);
 
-#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
+#ifndef XSERVER_LIBPCIACCESS
 	pScrn->racMemFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
 	/* XXX Is this right?  Can probably remove RAC_FB */
 	pScrn->racIoFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
@@ -608,7 +620,6 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 		case 16:
 		case 24:
 		case 32:
-			mod = "fb";
 			break;
 		default:
 			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
@@ -626,6 +637,9 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 	case FBDEVHW_TEXT:
                /* This should never happen ...
                 * we should check for this much much earlier ... */
+               xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+                          "text mode is not supported by the fbdev driver\n");
+		return FALSE;
        case FBDEVHW_VGA_PLANES:
                /* Not supported yet */
                xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
@@ -637,10 +651,11 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
                           "unrecognised imx hardware type (%d)\n", type);
                return FALSE;
 	}
-	if (mod && xf86LoadSubModule(pScrn, mod) == NULL) {
+	if (xf86LoadSubModule(pScrn, "fb") == NULL) {
 		IMXFreeRec(pScrn);
 		return FALSE;
 	}
+
 	/* Perform EXA pre-init */
 	if (fPtr->useAccel) {
 
@@ -1009,6 +1024,7 @@ IMXCloseScreen(int scrnIndex, ScreenPtr pScreen)
 	fbdevHWRestore(pScrn);
 	fbdevHWUnmapVidmem(pScrn);
 	if (fPtr->shadow) {
+	    shadowRemove(pScreen, pScreen->GetScreenPixmap(pScreen));
 	    xfree(fPtr->shadow);
 	    fPtr->shadow = NULL;
 	}
@@ -1024,6 +1040,41 @@ IMXCloseScreen(int scrnIndex, ScreenPtr pScreen)
 	return (*pScreen->CloseScreen)(scrnIndex, pScreen);
 }
 
+
+Bool
+IMXGetPixmapProperties(
+	PixmapPtr pPixmap,
+	void** pPhysAddr,
+	int* pPitch)
+{
+	/* Initialize values to be returned. */
+	*pPhysAddr = NULL;
+	*pPitch = 0;
+
+	/* Is there a pixmap? */
+	if (NULL == pPixmap) {
+		return FALSE;
+	}
+
+	/* Access screen associated with this pixmap. */
+	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+
+	/* Check if the screen associated with this pixmap has IMX driver. */
+	if (0 != strcmp(IMX_DRIVER_NAME, pScrn->driverName)) {
+		return FALSE;
+	}
+
+	/* Access driver specific content. */
+	IMXPtr fPtr = IMXPTR(pScrn);
+
+	/* Cannot process if not accelerating. */
+	if (!fPtr->useAccel) {
+		return FALSE;
+	}
+
+	/* If we get here, then query EXA portion of driver. */
+	return IMX_EXA_GetPixmapProperties(pPixmap, pPhysAddr, pPitch);
+}
 
 
 /***********************************************************************

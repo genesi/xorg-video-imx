@@ -1,5 +1,25 @@
 /*
- * Copyright 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc.  All Rights Reserved.
+ * 
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation 
+ * files (the "Software"), to deal in the Software without 
+ * restriction, including without limitation the rights to use, copy, 
+ * modify, merge, publish, distribute, sublicense, and/or sell copies 
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN 
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+ * SOFTWARE.
  */
 
 #include "xf86.h"
@@ -9,8 +29,12 @@
 #include "imx_type.h"
 #include "z160.h"
 
-#define	IMX_EXA_ENABLE_OFFSCREEN_PIXMAPS	1	/* offscreen pixmap support? */
-#define	IMX_EXA_ENABLE_SOLID			1	/* solid fill acceleration? */
+
+/* Set if handles pixmap allocation and migration, i.e, EXA_HANDLES_PIXMAPS */
+#define	IMX_EXA_ENABLE_HANDLES_PIXMAPS	(1 && (IMX_EXA_VERSION_COMPILED >= IMX_EXA_VERSION(2,5,0)))
+
+#define	IMX_EXA_ENABLE_SOLID		1	/* solid fill acceleration? */
+#define	IMX_EXA_ENABLE_EXA_INTERNAL	0	/* EXA code is in this driver */
 
 /* Set minimum size (pixel area) for accelerating operations. */
 #define	IMX_EXA_MIN_PIXEL_AREA_SOLID		150
@@ -45,8 +69,6 @@ typedef struct _IMXEXARec {
 
 	int				scrnIndex;
 	int				numScreenBytes;
-
-	ExaDriverPtr			exaDriverPtr;
 
 	void*				gpuContext;
 	Bool				gpuSynced;
@@ -105,16 +127,81 @@ typedef struct _IMXEXARec {
 
 #define IMXEXAPTR(p) ((IMXEXAPtr)((p)->exaDriverPrivate))
 
-/* Prototype for function not defined in exa.h */
-static PixmapPtr
-exaGetDrawablePixmap(DrawablePtr pDrawable)
+
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+
+typedef struct _IMXEXAPixmapRec {
+
+	/* Properties for pixmap header passed in CreatePixmap2 or */
+	/* in ModifyPixmapHeader callbacks. */
+	int			width;
+	int			height;
+	int			depth;
+	int			bitsPerPixel;
+
+	/* Common properties for allocated pixmap regardless where stored. */
+	int			pitchBytes;	/* bytes per row */
+	void*			ptr;		/* ptr to system/virtual addr */
+	Bool			canAccel;	/* true if in GPU memory */
+	void*			*gpuAddr;	/* physical GPU addr if accel */
+
+	/* Properties for pixmap allocated from GPU FB (offscreen) memory */
+	int			widthAligned;	/* aligned to 32 pixel horz */
+	int			heightAligned;	/* aligned to 32 pixel vert */
+	ExaOffscreenArea	*area;		/* ptr to GPU FB memory alloc */
+
+	/* Properties for pixmap allocated from system memory. */
+	int			sysAllocSize;	/* size of sys memory alloc */
+	void*			sysPtr;		/* ptr to sys memory alloc */
+
+} IMXEXAPixmapRec, *IMXEXAPixmapPtr;
+
+
+/* Definitions for functions defined in imx_exa_offscreen.c */
+extern Bool IMX_EXA_OffscreenInit(ScreenPtr pScreen);
+extern ExaOffscreenArea* IMX_EXA_OffscreenAlloc(
+				ScreenPtr pScreen, int size, int align,
+                  		Bool locked, ExaOffscreenSaveProc save,
+                  		pointer privData);
+extern ExaOffscreenArea* IMX_EXA_OffscreenFree(
+				ScreenPtr pScreen, ExaOffscreenArea* area);
+extern void IMX_EXA_OffscreenFini(ScreenPtr pScreen);
+
+#endif
+
+
+static
+PixmapPtr
+Z160EXAGetDrawablePixmap(DrawablePtr pDrawable)
 {
-     if (!pDrawable) return NULL;
-     if (pDrawable->type == DRAWABLE_WINDOW)
-        return pDrawable->pScreen->GetWindowPixmap ((WindowPtr) pDrawable);
-     else
-        return (PixmapPtr) pDrawable;
+	/* Make sure there is a drawable. */
+	if (NULL == pDrawable) {
+		return NULL;
+	}
+
+	/* Check for a backing pixmap. */
+	if (DRAWABLE_WINDOW == pDrawable->type) {
+
+		WindowPtr pWindow = (WindowPtr)pDrawable;
+		return pDrawable->pScreen->GetWindowPixmap(pWindow);
+	}
+
+	/* Otherwise, it's a regular pixmap. */
+	return (PixmapPtr)pDrawable;
 }
+
+static PixmapPtr
+Z160EXAGetPicturePixmap(PicturePtr pPicture)
+{
+	if (NULL != pPicture) {
+
+		return Z160EXAGetDrawablePixmap(pPicture->pDrawable);
+	}
+
+	return NULL;
+}
+
+
 
 /* Called by IMXGetRec */
 void IMX_EXA_GetRec(ScrnInfoPtr pScrn)
@@ -163,7 +250,7 @@ void IMX_EXA_GetRec(ScrnInfoPtr pScrn)
 }
 
 /* Called by IMXFreeRec */
-void IMXFreeRec(ScrnInfoPtr pScrn)
+void IMX_EXA_FreeRec(ScrnInfoPtr pScrn)
 {
 	IMXPtr imxPtr = IMXPTR(pScrn);
 
@@ -176,7 +263,7 @@ void IMXFreeRec(ScrnInfoPtr pScrn)
 }
 
 
-#if 0
+#if IMX_DEBUG_MASTER
 
 static unsigned long
 Z160GetElapsedMicroseconds(struct timeval* pTimeStart, struct timeval* pTimeStop)
@@ -218,8 +305,38 @@ Z160GetElapsedMicroseconds(struct timeval* pTimeStart, struct timeval* pTimeStop
 }
 #endif
 
+static
+void*
+Z160EXAGetPixmapAddress(PixmapPtr pPixmap)
+{
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+	/* Make sure pixmap is defined. */
+	if (NULL == pPixmap) {
+		return NULL;
+	}
+
+	/* Access driver private data structure associated with pixmap. */
+	IMXEXAPixmapPtr fPixmapPtr =
+		(IMXEXAPixmapPtr)(exaGetPixmapDriverPrivate(pPixmap));
+	if (NULL == fPixmapPtr) {
+		return NULL;
+	}
+
+	return fPixmapPtr->ptr;
+#else
+	/* Access screen associated with this pixmap. */
+	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+
+	/* Access driver specific data */
+	IMXPtr imxPtr = IMXPTR(pScrn);
+
+	/* Compute the physical address using relative offset. */
+	return (unsigned char*)imxPtr->fbstart + exaGetPixmapOffset(pPixmap);
+#endif
+}
+
 Bool
-IMX_GetPixmapProperties(
+IMX_EXA_GetPixmapProperties(
 	PixmapPtr pPixmap,
 	void** pPhysAddr,
 	int* pPitch)
@@ -233,6 +350,26 @@ IMX_GetPixmapProperties(
 		return FALSE;
 	}
 
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+
+	/* Access driver private data structure associated with pixmap. */
+	IMXEXAPixmapPtr fPixmapPtr =
+		(IMXEXAPixmapPtr)(exaGetPixmapDriverPrivate(pPixmap));
+	if (NULL == fPixmapPtr) {
+		return FALSE;
+	}
+
+	/* Make sure pixmap is in GPU memory. */
+	if (!fPixmapPtr->canAccel) {
+		return FALSE;
+	}
+
+	/* Get the physical address of pixmap and its pitch */
+	*pPhysAddr = fPixmapPtr->gpuAddr;
+	*pPitch = fPixmapPtr->pitchBytes;
+
+#else
+
 	/* Access screen associated with this pixmap. */
 	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
 
@@ -244,6 +381,8 @@ IMX_GetPixmapProperties(
 	/* Get the physical address of pixmap and its pitch */
 	*pPhysAddr = (void*)((unsigned char*)pScrn->memPhysBase + exaGetPixmapOffset(pPixmap));
 	*pPitch = exaGetPixmapPitch(pPixmap);
+
+#endif
 
 	return TRUE;
 }
@@ -262,6 +401,36 @@ Z160CanAcceleratePixmapRectangles(PixmapPtr pPixmap)
 		return FALSE;
 	}
 
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+
+	/* Access driver private data structure associated with pixmap. */
+	IMXEXAPixmapPtr fPixmapPtr =
+		(IMXEXAPixmapPtr)(exaGetPixmapDriverPrivate(pPixmap));
+	if (NULL == fPixmapPtr) {
+		return FALSE;
+	}
+
+	/* Make sure pixmap is in GPU memory. */
+	if (!fPixmapPtr->canAccel) {
+		return FALSE;
+	}
+
+	/* Pixmap pitch must be within z160 limits and must be aligned. */
+	const unsigned pitchBytes = fPixmapPtr->pitchBytes;
+	if ((pitchBytes > Z160_MAX_PITCH_BYTES) ||
+		(0 != (pitchBytes & (Z160_ALIGN_PITCH-1)))) {
+
+		return FALSE;
+	}
+
+	/* Pixmap must be offset aligned. */
+	const void* gpuAddr = fPixmapPtr->gpuAddr;
+	if (0 != ((int)gpuAddr & (Z160_ALIGN_OFFSET-1))) {
+		return FALSE;
+	}
+
+#else
+
 	/* Pixmap must be in frame buffer memory */
 	if (!exaDrawableIsOffscreen(&(pPixmap->drawable))) {
 		return FALSE;
@@ -279,6 +448,8 @@ Z160CanAcceleratePixmapRectangles(PixmapPtr pPixmap)
 	if (0 != (exaGetPixmapOffset(pPixmap) & (Z160_ALIGN_OFFSET-1))) {
 		return FALSE;
 	}
+
+#endif
 
 	/* If we get here, then operations on this pixmap can be accelerated. */
 	return TRUE;
@@ -318,7 +489,7 @@ Z160GetPixmapConfig(PixmapPtr pPixmap, Z160Buffer* pBuffer)
 	}
 
 	/* Get frame buffer properties about the pixmap. */
-	if (!IMX_GetPixmapProperties(pPixmap, &pBuffer->base, &pBuffer->pitch)) {
+	if (!IMX_EXA_GetPixmapProperties(pPixmap, &pBuffer->base, &pBuffer->pitch)) {
 		return FALSE;
 	}
 
@@ -344,7 +515,7 @@ Z160GetPictureConfig(ScrnInfoPtr pScrn, PicturePtr pPicture, Z160Buffer* pBuffer
 	}
 
 	/* Access the pixmap associated with this picture. */
-	PixmapPtr pPixmap = exaGetDrawablePixmap(pPicture->pDrawable);
+	PixmapPtr pPixmap = Z160EXAGetDrawablePixmap(pPicture->pDrawable);
 	if (NULL == pPixmap) {
 		return FALSE;
 	}
@@ -614,8 +785,7 @@ Z160EXAPreparePipelinedAccess(PixmapPtr pPixmap, int index)
 	/* can be passed down into fb* funtions. */
 	if (NULL == pPixmap->devPrivate.ptr) {
 
-		pPixmap->devPrivate.ptr =
-			fPtr->exaDriverPtr->memoryBase + exaGetPixmapOffset(pPixmap);
+		pPixmap->devPrivate.ptr = Z160EXAGetPixmapAddress(pPixmap);
 	}
 }
 
@@ -634,6 +804,314 @@ Z160EXAFinishPipelinedAccess(PixmapPtr pPixmap, int index)
 	fPtr->savePixmapPtr[index] = NULL;
 }
 
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+
+/* BEGIN Functions for driver to handle pixmap allocation and migraion. */
+
+/* Align an offset to an arbitrary alignment */
+#define IMX_EXA_ALIGN(offset, align) (((offset) + (align) - 1) - \
+	(((offset) + (align) - 1) % (align)))
+
+static Bool
+Z160EXAPrepareAccess(PixmapPtr pPixmap, int index)
+{
+	/* Since EXA_HANDLES_PIXMAPS flag is set, then there nothing to do. */
+	/* But this callback has to be implemented. */
+
+	return TRUE;
+}
+
+static void
+Z160EXAFinishAccess(PixmapPtr pPixmap, int index)
+{
+	/* Since EXA_HANDLES_PIXMAPS flag is set, then there nothing to do. */
+	/* But this callback has to be implemented. */
+}
+
+static int
+Z160EXAComputeSystemMemoryPitch(int width, int bitsPerPixel)
+{
+	return ((width * bitsPerPixel + FB_MASK) >> FB_SHIFT) * sizeof(FbBits);
+}
+
+static void*
+Z160EXACreatePixmap2(ScreenPtr pScreen, int width, int height,
+			int depth, int usage_hint, int bitsPerPixel,
+			int *pPitch)
+{
+	/* Allocate the private data structure to be stored with pixmap. */
+	IMXEXAPixmapPtr fPixmapPtr =
+		(IMXEXAPixmapPtr)xnfalloc(sizeof(IMXEXAPixmapRec));
+
+	if (NULL == fPixmapPtr) {
+		return NULL;
+	}
+
+	/* Initialize pixmap properties passed in. */
+	fPixmapPtr->width = width;
+	fPixmapPtr->height = height;
+	fPixmapPtr->depth = depth;
+	fPixmapPtr->bitsPerPixel = bitsPerPixel;
+
+	/* Initialize common properties. */
+	fPixmapPtr->pitchBytes = 0;
+	fPixmapPtr->ptr = NULL;
+	fPixmapPtr->canAccel = FALSE;
+	fPixmapPtr->gpuAddr = NULL;
+
+	/* Initialize properties for GPU frame buffer allocated memory. */
+	fPixmapPtr->widthAligned = 0;
+	fPixmapPtr->heightAligned = 0;
+	fPixmapPtr->area = NULL;
+
+	/* Initialize properties for system allocated memory. */
+	fPixmapPtr->sysAllocSize = 0;
+	fPixmapPtr->sysPtr = NULL;
+
+	/* Nothing more to do if the width or height have no dimensions. */
+	if ((0 == width) || (0 == height)) {
+		*pPitch = 0;
+		return fPixmapPtr;
+	}
+
+	/* Access the driver specific data. */
+	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+	IMXPtr imxPtr = IMXPTR(pScrn);
+	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
+	
+	/* What is the start of screen (and offscreen) memory. */
+	CARD8* screenMemoryBegin = (CARD8*)(imxPtr->exaDriverPtr->memoryBase);
+
+	/* First try to allocate pixmap memory from GPU memory but */
+	/* can only when bits per pixel >= 8. */
+	if (bitsPerPixel >= 8) {
+
+		/* Z160 has 32 pixel width and height alignment. */
+		const int gpuAlignedWidth = IMX_EXA_ALIGN(width, 32);
+		const int gpuAlignedHeight = IMX_EXA_ALIGN(height, 32);
+
+		/* Compute number of pitch bytes for GPU allocated memory. */
+		const int gpuPitchBytes = gpuAlignedWidth * bitsPerPixel / 8;
+
+		/* Compute how much memory to allocate for GPU memory. */
+		const int gpuAllocSize = gpuAlignedHeight * gpuPitchBytes;
+
+		/* Attemp to allocate from GPU (offscreen) FB memory pool. */
+		ExaOffscreenArea* area =
+			IMX_EXA_OffscreenAlloc(
+				pScreen,		/* ScreenPtr */
+				gpuAllocSize,		/* size */
+				Z160_ALIGN_OFFSET,	/* align */
+				TRUE,			/* locked? */
+				NULL,			/* save */
+				NULL);			/* privData */
+
+		/* If memory allocated, then assign values to private */
+		/* data structure and return. */
+		if (NULL != area) {
+
+			fPixmapPtr->widthAligned = gpuAlignedWidth;
+			fPixmapPtr->heightAligned = gpuAlignedHeight;
+			fPixmapPtr->area = area;
+
+			fPixmapPtr->canAccel = TRUE;
+			fPixmapPtr->pitchBytes = gpuPitchBytes;
+			fPixmapPtr->ptr = screenMemoryBegin + area->offset;
+			fPixmapPtr->gpuAddr =
+				(void*)((unsigned char*)pScrn->memPhysBase +
+					area->offset);
+
+			*pPitch = gpuPitchBytes;
+		}
+	}
+
+	/* If we could not allocate pixmap memory from GPU memory, */
+	/* then must try allocating from system memory. */
+	if (NULL == fPixmapPtr->ptr) {
+
+		/* Compute number of pitch bytes for system allocated memory. */
+		/* The number of pitch bytes is passed in as the mis-named */
+		/* "devKind" parameter. */
+		const int sysPitchBytes =
+			Z160EXAComputeSystemMemoryPitch(width, bitsPerPixel);
+
+		/* Compute how much memory to allocate for system memory. */
+		const int sysAllocSize = height * sysPitchBytes;
+
+		/* Attempt to allocate pixmap memory from system memory. */
+		void* sysPtr = xnfalloc(sysAllocSize);
+		
+		/* If memory allocated, then assign values to private */
+		/* data structure and return. */
+		if (NULL != sysPtr) {
+
+			fPixmapPtr->sysAllocSize = sysAllocSize;
+			fPixmapPtr->sysPtr = sysPtr;
+
+			fPixmapPtr->pitchBytes = sysPitchBytes;
+			fPixmapPtr->ptr = sysPtr;
+			fPixmapPtr->canAccel = FALSE;
+
+			*pPitch = sysPitchBytes;
+		}
+	}
+
+	/* If we got here and still have no pixmap memory, then cleanup */
+	/* and setup to return failure. */
+	if (NULL == fPixmapPtr->ptr) {
+		xfree(fPixmapPtr);
+		fPixmapPtr = NULL;
+	}
+
+	return fPixmapPtr;
+}
+
+static void
+Z160EXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
+{
+	/* Nothing to do if driver private pointer not defined. */
+	if (NULL == driverPriv) {
+		return;
+	}
+
+	/* Cast pointer to driver private data structure. */
+	IMXEXAPixmapPtr fPixmapPtr = (IMXEXAPixmapPtr)driverPriv;
+
+	/* Is pixmap allocated in offscreen frame buffer memory? */
+	if (NULL != fPixmapPtr->area) {
+
+		IMX_EXA_OffscreenFree(pScreen, fPixmapPtr->area);
+
+	/* Is pixmap allocated in system memory? */
+	} else if (NULL != fPixmapPtr->sysPtr) {
+
+		xfree(fPixmapPtr->sysPtr);
+	}
+
+	/* Free the driver private data structure associated with pixmap. */
+	xfree(fPixmapPtr);
+}
+
+static Bool
+Z160EXAModifyPixmapHeader(PixmapPtr pPixmap, int width, int height,
+		int depth, int bitsPerPixel, int devKind, pointer pPixData)
+{
+	/* Make sure the pixmap is defined. */
+	if (NULL == pPixmap) {
+		return FALSE;
+	}
+
+	/* Access driver private data structure associated with pixmap. */
+	IMXEXAPixmapPtr fPixmapPtr =
+		(IMXEXAPixmapPtr)(exaGetPixmapDriverPrivate(pPixmap));
+	if (NULL == fPixmapPtr) {
+		return FALSE;
+	}
+
+	/* Access screen associated with this pixmap */
+	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+
+	/* Access driver specific data */
+	IMXPtr imxPtr = IMXPTR(pScrn);
+	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
+
+	/* What is the start of screen (and offscreen) memory and its size. */
+	CARD8* screenMemoryBegin = (CARD8*)(imxPtr->exaDriverPtr->memoryBase);
+	CARD8* screenMemoryEnd =
+		screenMemoryBegin + imxPtr->exaDriverPtr->memorySize;
+
+	/* Update the width if specified. */
+	if (0 < width) {
+		fPixmapPtr->width = width;
+	}
+
+	/* Update the height if specified. */
+	if (0 < height) {
+		fPixmapPtr->height = height;
+	}
+
+	/* Update the bits per pixel if specified */
+	if (0 < bitsPerPixel) {
+		fPixmapPtr->bitsPerPixel = bitsPerPixel;
+	}
+
+	/* Update the bits per pixel if specified */
+	if (0 < depth) {
+		fPixmapPtr->depth = depth;
+	}
+
+	/* Update the pointer to pixel data if specified. */
+	if (0 != pPixData) {
+
+		fPixmapPtr->ptr = pPixData;
+
+		if ((screenMemoryBegin <= (CARD8*)(fPixmapPtr->ptr)) &&
+			((CARD8*)(fPixmapPtr->ptr) < screenMemoryEnd)) {
+
+			fPixmapPtr->canAccel = TRUE;
+
+			/* Compute address relative to begin of FB memory. */
+			const unsigned long offset =
+				(CARD8*)(fPixmapPtr->ptr) - screenMemoryBegin;
+
+			/* Store GPU address. */
+			fPixmapPtr->gpuAddr =
+				(void*)((unsigned char*)pScrn->memPhysBase +
+					offset);
+
+		} else {
+
+			fPixmapPtr->canAccel = FALSE;
+		}
+
+		/* If the pixel buffer changed and the pitch was not */
+		/* specified, then recompute the pitch. */
+		if (0 >= devKind) {
+			devKind =
+				Z160EXAComputeSystemMemoryPitch(
+					fPixmapPtr->width,
+					fPixmapPtr->bitsPerPixel);
+		}
+	}
+
+	/* Update the pitch bytes if specified, or if recomputed. */
+	if (0 < devKind) {
+		fPixmapPtr->pitchBytes = devKind;
+	}
+
+	/* Update the pixmap header with our info. */
+	pPixmap->drawable.width = fPixmapPtr->width;
+	pPixmap->drawable.height = fPixmapPtr->height;
+	pPixmap->drawable.bitsPerPixel = fPixmapPtr->bitsPerPixel;
+	pPixmap->drawable.depth = fPixmapPtr->depth;
+	pPixmap->devPrivate.ptr = fPixmapPtr->ptr;
+	pPixmap->devKind = fPixmapPtr->pitchBytes;
+
+	return TRUE;
+}
+
+static Bool
+Z160EXAPixmapIsOffscreen(PixmapPtr pPixmap)
+{
+	/* Make sure pixmap is defined. */
+	if (NULL == pPixmap) {
+		return FALSE;
+	}
+
+	/* Access driver private data structure associated with pixmap. */
+	IMXEXAPixmapPtr fPixmapPtr =
+		(IMXEXAPixmapPtr)(exaGetPixmapDriverPrivate(pPixmap));
+	if (NULL == fPixmapPtr) {
+		return FALSE;
+	}
+
+	return fPixmapPtr->canAccel;
+}
+
+/* END Functions for driver to handle pixmap allocation and migraion. */
+
+#else
+
 static Bool
 Z160EXAPrepareAccess(PixmapPtr pPixmap, int index)
 {
@@ -650,6 +1128,8 @@ Z160EXAFinishAccess(PixmapPtr pPixmap, int index)
 	/* Nothing to do, but this callback has to be implemented */
 	/* if the prepare access callback is overridden. */
 }
+
+#endif
 
 static Bool
 Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
@@ -1270,10 +1750,9 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 	}
 
 	/* Access the pixmap associated with each picture */
-	PixmapPtr pPixmapDst = exaGetDrawablePixmap(pPictureDst->pDrawable);
-	PixmapPtr pPixmapSrc = exaGetDrawablePixmap(pPictureSrc->pDrawable);
-	PixmapPtr pPixmapMask = 
-		(NULL != pPictureMask) ? exaGetDrawablePixmap(pPictureMask->pDrawable) : NULL;
+	PixmapPtr pPixmapDst = Z160EXAGetPicturePixmap(pPictureDst);
+	PixmapPtr pPixmapSrc = Z160EXAGetPicturePixmap(pPictureSrc);
+	PixmapPtr pPixmapMask = Z160EXAGetPicturePixmap(pPictureMask);
 
 	/* Cannot perform blend unless screens associated with src and dst pictures are same. */
 	if ((NULL == pPixmapSrc) || (NULL == pPixmapDst) ||
@@ -1823,7 +2302,8 @@ Z160EXAUploadToScreen(
 	int pitchDst = exaGetPixmapPitch(pPixmapDst);
 
 	/* Access the starting address for the pixmap. */
-	unsigned char* pBufferDst = fPtr->exaDriverPtr->memoryBase + exaGetPixmapOffset(pPixmapDst);
+	unsigned char* pBufferDst =
+		(unsigned char*)Z160EXAGetPixmapAddress(pPixmapDst);
 
 	/* Advance to the starting pixel. */
 	pBufferDst += (dstY * pitchDst + dstX * bytesPerPixel);
@@ -1875,7 +2355,8 @@ Z160EXADownloadFromScreen(
 	int pitchSrc = exaGetPixmapPitch(pPixmapSrc);
 
 	/* Access the starting address for the pixmap. */
-	unsigned char* pBufferSrc = fPtr->exaDriverPtr->memoryBase + exaGetPixmapOffset(pPixmapSrc);
+	unsigned char* pBufferSrc =
+		(unsigned char*)Z160EXAGetPixmapAddress(pPixmapSrc);
 
 	/* Advance to the starting pixel. */
 	pBufferSrc += (srcY * pitchSrc + srcX * bytesPerPixel);
@@ -1910,6 +2391,9 @@ Z160EXAWaitMarker(ScreenPtr pScreen, int marker)
 /* Called by IMXPreInit */
 Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn)
 {
+
+#if !IMX_EXA_ENABLE_EXA_INTERNAL
+
 	XF86ModReqInfo req;
 	int errmaj, errmin;
 	memset(&req, 0, sizeof(req));
@@ -1920,6 +2404,7 @@ Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn)
 		LoaderErrorMsg(NULL, "exa", errmaj, errmin);
 		return FALSE;
 	}
+#endif
 
 	/* initialize state of Z160 data structures */
 	IMXPtr imxPtr = IMXPTR(pScrn);
@@ -1975,75 +2460,90 @@ Bool IMX_EXA_ScreenInit(int scrnIndex, ScreenPtr pScreen)
 	}
 
 	/* Initialize EXA. */
-	fPtr->exaDriverPtr = exaDriverAlloc();
-	if (NULL == fPtr->exaDriverPtr) {
+	imxPtr->exaDriverPtr = exaDriverAlloc();
+	if (NULL == imxPtr->exaDriverPtr) {
 
 		Z160ContextRelease(fPtr);
 
 	} else {
 
-		memset(fPtr->exaDriverPtr, 0, sizeof(*fPtr->exaDriverPtr));
+		memset(imxPtr->exaDriverPtr, 0, sizeof(*imxPtr->exaDriverPtr));
 
-		int flags = 0;
-		unsigned long memorySize;
+		/* Alignment of pixmap pitch is 32 pixels for z430 */
+		/* (4 pixels for z160), but times 4 bytes max per pixel. */
+		unsigned long pixmapPitchAlign = 32 * 4;
 
-#if IMX_EXA_ENABLE_OFFSCREEN_PIXMAPS
-		flags |= EXA_OFFSCREEN_PIXMAPS;
-		memorySize = fbdevHWGetVidmem(pScrn);
-#else
-		memorySize = fPtr->numScreenBytes;
-#endif
-
-		fPtr->exaDriverPtr->flags = flags;
-		fPtr->exaDriverPtr->exa_major = EXA_VERSION_MAJOR;
-		fPtr->exaDriverPtr->exa_minor = EXA_VERSION_MINOR;
-		fPtr->exaDriverPtr->memoryBase = imxPtr->fbstart;
-		fPtr->exaDriverPtr->memorySize = memorySize;
-		fPtr->exaDriverPtr->offScreenBase = fPtr->numScreenBytes;
-		fPtr->exaDriverPtr->pixmapOffsetAlign = Z160_ALIGN_OFFSET;
-//		fPtr->exaDriverPtr->pixmapPitchAlign = Z160_ALIGN_PITCH;
-		fPtr->exaDriverPtr->pixmapPitchAlign = 32;	// 32 for z430; 4 for z160
-		fPtr->exaDriverPtr->maxPitchBytes = Z160_MAX_PITCH_BYTES;
-		fPtr->exaDriverPtr->maxX = Z160_MAX_WIDTH - 1;
-		fPtr->exaDriverPtr->maxY = Z160_MAX_HEIGHT - 1;
+		imxPtr->exaDriverPtr->flags = EXA_OFFSCREEN_PIXMAPS;
+		imxPtr->exaDriverPtr->exa_major = EXA_VERSION_MAJOR;
+		imxPtr->exaDriverPtr->exa_minor = EXA_VERSION_MINOR;
+		imxPtr->exaDriverPtr->memoryBase = imxPtr->fbstart;
+		imxPtr->exaDriverPtr->memorySize = fbdevHWGetVidmem(pScrn);
+		imxPtr->exaDriverPtr->offScreenBase = fPtr->numScreenBytes;
+		imxPtr->exaDriverPtr->pixmapOffsetAlign = Z160_ALIGN_OFFSET;
+		imxPtr->exaDriverPtr->pixmapPitchAlign = pixmapPitchAlign;
+		imxPtr->exaDriverPtr->maxPitchBytes = Z160_MAX_PITCH_BYTES;
+		imxPtr->exaDriverPtr->maxX = Z160_MAX_WIDTH - 1;
+		imxPtr->exaDriverPtr->maxY = Z160_MAX_HEIGHT - 1;
 
 		/* Required */
-		fPtr->exaDriverPtr->WaitMarker = Z160EXAWaitMarker;
+		imxPtr->exaDriverPtr->WaitMarker = Z160EXAWaitMarker;
 
 		/* Solid fill - required */
-		fPtr->exaDriverPtr->PrepareSolid = Z160EXAPrepareSolid;
-		fPtr->exaDriverPtr->Solid = Z160EXASolid;
-		fPtr->exaDriverPtr->DoneSolid = Z160EXADoneSolid;
+		imxPtr->exaDriverPtr->PrepareSolid = Z160EXAPrepareSolid;
+		imxPtr->exaDriverPtr->Solid = Z160EXASolid;
+		imxPtr->exaDriverPtr->DoneSolid = Z160EXADoneSolid;
 
 		/* Copy - required */
-		fPtr->exaDriverPtr->PrepareCopy = Z160EXAPrepareCopy;
-		fPtr->exaDriverPtr->Copy = Z160EXACopy;
-		fPtr->exaDriverPtr->DoneCopy = Z160EXADoneCopy;
+		imxPtr->exaDriverPtr->PrepareCopy = Z160EXAPrepareCopy;
+		imxPtr->exaDriverPtr->Copy = Z160EXACopy;
+		imxPtr->exaDriverPtr->DoneCopy = Z160EXADoneCopy;
 
 		/* Composite */
-		fPtr->exaDriverPtr->CheckComposite = Z160EXACheckComposite;
-		fPtr->exaDriverPtr->PrepareComposite = Z160EXAPrepareComposite;
-		fPtr->exaDriverPtr->Composite = Z160EXAComposite;
-		fPtr->exaDriverPtr->DoneComposite = Z160EXADoneComposite;
+		imxPtr->exaDriverPtr->CheckComposite = Z160EXACheckComposite;
+		imxPtr->exaDriverPtr->PrepareComposite = Z160EXAPrepareComposite;
+		imxPtr->exaDriverPtr->Composite = Z160EXAComposite;
+		imxPtr->exaDriverPtr->DoneComposite = Z160EXADoneComposite;
 
 		/* Screen upload/download */
-		fPtr->exaDriverPtr->UploadToScreen = Z160EXAUploadToScreen;
-		fPtr->exaDriverPtr->DownloadFromScreen = Z160EXADownloadFromScreen;
+		imxPtr->exaDriverPtr->UploadToScreen = Z160EXAUploadToScreen;
+		imxPtr->exaDriverPtr->DownloadFromScreen = Z160EXADownloadFromScreen;
 
-#if EXA_VERSION_MINOR >= 2
+#if IMX_EXA_VERSION_COMPILED > IMX_EXA_VERSION(2,2,0)
 		/* Prepare/Finish access */
-		fPtr->exaDriverPtr->PrepareAccess = Z160EXAPrepareAccess;
-		fPtr->exaDriverPtr->FinishAccess = Z160EXAFinishAccess;
+		imxPtr->exaDriverPtr->PrepareAccess = Z160EXAPrepareAccess;
+		imxPtr->exaDriverPtr->FinishAccess = Z160EXAFinishAccess;
 #endif
 
-		if (!exaDriverInit(pScreen, fPtr->exaDriverPtr)) {
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+		/* For driver pixmap allocation. */
+		imxPtr->exaDriverPtr->flags |= EXA_HANDLES_PIXMAPS;
+
+		imxPtr->exaDriverPtr->CreatePixmap2 = Z160EXACreatePixmap2;
+		imxPtr->exaDriverPtr->DestroyPixmap = Z160EXADestroyPixmap;
+		imxPtr->exaDriverPtr->ModifyPixmapHeader = Z160EXAModifyPixmapHeader;
+		imxPtr->exaDriverPtr->PixmapIsOffscreen = Z160EXAPixmapIsOffscreen;
+#endif
+
+		if (!exaDriverInit(pScreen, imxPtr->exaDriverPtr)) {
 
 			xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "EXA initialization failed.\n");
-			xfree(fPtr->exaDriverPtr);
-			fPtr->exaDriverPtr = NULL;
+			xfree(imxPtr->exaDriverPtr);
+			imxPtr->exaDriverPtr = NULL;
 			Z160ContextRelease(fPtr);
 			return FALSE;
 		}
+
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+		xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Driver handles allocation of pixmaps\n");
+		unsigned long numAvailPixmapBytes =
+			imxPtr->exaDriverPtr->memorySize -
+				imxPtr->exaDriverPtr->offScreenBase;
+		xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Offscreen pixmap area of %luK bytes\n", numAvailPixmapBytes / 1024);
+
+		/* Driver allocation of pixmaps will use the built-in */
+		/* EXA offscreen memory manager. */
+		IMX_EXA_OffscreenInit(pScreen);
+#endif
 	}
 
 	return TRUE;
@@ -2101,10 +2601,17 @@ Bool IMX_EXA_CloseScreen(int scrnIndex, ScreenPtr pScreen)
 #endif
 
 	/* EXA cleanup */
-	if (fPtr->exaDriverPtr) {
+	if (imxPtr->exaDriverPtr) {
+
+#if IMX_EXA_ENABLE_HANDLES_PIXMAPS
+		/* Driver allocation of pixmaps will use the built-in */
+		/* EXA offscreen memory manager. */
+		IMX_EXA_OffscreenFini(pScreen);
+#endif
+
 		exaDriverFini(pScreen);
-		xfree(fPtr->exaDriverPtr);
-		fPtr->exaDriverPtr = NULL;
+		xfree(imxPtr->exaDriverPtr);
+		imxPtr->exaDriverPtr = NULL;
 	}
 
 	/* Shutdown the Z160 hardware access. */

@@ -1,5 +1,25 @@
 /*
- * Copyright 2009 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc.  All Rights Reserved.
+ * 
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation 
+ * files (the "Software"), to deal in the Software without 
+ * restriction, including without limitation the rights to use, copy, 
+ * modify, merge, publish, distribute, sublicense, and/or sell copies 
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN 
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+ * SOFTWARE.
  */
 
 #include <X11/X.h>
@@ -11,10 +31,10 @@
 
 /* External functions defined elsewhere in the driver. */
 extern Bool
-IMX_GetPixmapProperties(
+IMXGetPixmapProperties(
 	PixmapPtr pPixmap,	/* IN */
-	void** pPhysAddr,	/* OUT: pixmap phys addr, NULL if not in framebuffer */
-	int* pPitch);		/* OUT: pixmap pitch, 0 if not in framebuffer */
+	void** pPhysAddr,	/* OUT: pixmap phys addr, NULL if not GPU mem */
+	int* pPitch);		/* OUT: pixmap pitch, 0 if not in GPU mem */
 
 static DISPATCH_PROC(Proc_IMX_EXT_Dispatch);
 static DISPATCH_PROC(Proc_IMX_EXT_GetPixmapPhysAddr);
@@ -54,7 +74,7 @@ Proc_IMX_EXT_GetPixmapPhysAddr(ClientPtr client)
 		int pitch;
 
 		/* Query the pixmap properties from the driver. */
-		if (IMX_GetPixmapProperties(pPixmap, &pPhysAddr, &pitch))
+		if (IMXGetPixmapProperties(pPixmap, &pPhysAddr, &pitch))
 		{
 			rep.pixmapState = IMX_EXT_PixmapFramebuffer;
 			rep.pixmapPhysAddr = (CARD32)pPhysAddr;

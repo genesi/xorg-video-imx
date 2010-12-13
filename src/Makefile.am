@@ -43,4 +43,5 @@ imx_drv_la_SOURCES = \
 	imx_ext.c \
 	imx_ext.h \
 	imx_xv_ipu.c \
-	imx_exa_z160.c	
+	imx_exa_z160.c \
+	imx_exa_offscreen.c

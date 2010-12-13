@@ -22,7 +22,7 @@
 
 AC_PREREQ(2.57)
 AC_INIT([xf86-video-imx],
-        0.1.0,
+        0.2.0,
         [],
         xf86-video-imx)
 
