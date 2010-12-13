@@ -44,13 +44,4 @@ imx_drv_la_SOURCES = \
 	imx_ext.h \
 	imx_xv_ipu.c \
 	imx_exa_z160.c \
-	exa/examodule.c \
-	exa/exa.c \
-	exa/exa.h \
-	exa/exa_accel.c \
-	exa/exa_glyphs.c \
-	exa/exa_migration.c \
-	exa/exa_offscreen.c \
-	exa/exa_render.c \
-	exa/exa_priv.h \
-	exa/exa_unaccel.c
+	imx_exa_offscreen.c
