@@ -1,0 +1,109 @@
+#!/usr/bin/make -f
+# debian/rules for the Debian xserver-xorg-driver-imx package.
+# Copyright © 2004 Scott James Remnant <scott@netsplit.com>
+# Copyright © 2005 Daniel Stone <daniel@fooishbar.org>
+# Copyright © 2005 David Nusinow <dnusinow@debian.org>
+# Copyright © 2005 Matt Sealey <matt@genesi-usa.com>
+
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+include debian/xsfbs/xsfbs.mk
+
+CFLAGS = -Wall -g
+ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+else
+	CFLAGS += -O2
+endif
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	MAKEFLAGS += -j$(NUMJOBS)
+endif
+
+DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+DEB_HOST_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
+DEB_BUILD_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+ifeq ($(DEB_BUILD_GNU_TYPE), $(DEB_HOST_GNU_TYPE))
+	confflags += --build=$(DEB_HOST_GNU_TYPE)
+else
+	confflags += --build=$(DEB_BUILD_GNU_TYPE) --host=$(DEB_HOST_GNU_TYPE)
+endif
+
+# kbd_drv.a isn't phenomenally useful; kbd_drv.so more so
+confflags += --disable-static
+
+common_confflags = \
+	--prefix=/usr --mandir=\$${prefix}/share/man \
+	--infodir=\$${prefix}/share/info $(confflags) \
+	CFLAGS="$(CFLAGS)"
+
+configure: $(STAMP_DIR)/patch
+	dh_testdir
+	autoreconf -vfi
+
+build: build-stamp
+build-stamp: configure
+	dh_testdir
+
+	test -d build || mkdir build
+	test -d build-udeb || mkdir build-udeb
+	cd build && ../configure --enable-xv $(common_confflags)
+	cd build-udeb && ../configure --disable-xv $(common_confflags)
+	cd build && $(MAKE)
+	cd build-udeb && $(MAKE)
+	>$@
+
+clean: xsfclean
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp
+
+	rm -f config.cache config.log config.status
+	rm -f */config.cache */config.log */config.status
+	rm -f conftest* */conftest*
+	rm -rf autom4te.cache */autom4te.cache
+	rm -rf build build-udeb
+	rm -rf debian/tmp debian/tmp-udeb
+	rm -f aclocal.m4 config.guess config.sub config.h.in configure
+	rm -f depcomp install-sh ltmain.sh missing mkinstalldirs
+	rm -f $$(find -name Makefile.in)
+
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	rm -rf debian/tmp-udeb
+	dh_installdirs
+
+	cd build && $(MAKE) DESTDIR=$(CURDIR)/debian/tmp install
+	cd build-udeb && $(MAKE) DESTDIR=$(CURDIR)/debian/tmp-udeb install
+
+# Build architecture-dependent files here.
+binary-arch: build install serverabi
+	dh_testdir
+	dh_testroot
+
+	dh_installdocs
+	dh_installchangelogs ChangeLog
+	dh_install -p$(PACKAGE) --sourcedir=debian/tmp --list-missing
+	dh_install -p$(PACKAGE)-udeb --sourcedir=debian/tmp-udeb --list-missing
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps -- --warnings=6
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+# Build architecture-independent files here.
+binary-indep: build install
+# Nothing to do
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install

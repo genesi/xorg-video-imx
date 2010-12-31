@@ -1,0 +1,29 @@
+Source: xserver-xorg-video-imx
+Section: x11
+Priority: optional
+Maintainer: Matt Sealey <matt@genesi-usa.com>
+Uploaders: Steev Klimaszewski <steev@genesi-usa.com>, Konstantinos Margaritis <markos@genesi-usa.com>, Luca Barbato <lu_zero@genesi-usa.com>
+Build-Depends:
+ debhelper (>= 5.0.0),
+ quilt,
+ pkg-config,
+ xserver-xorg-dev (>= 2:1.7.6.901),
+ x11proto-core-dev,
+ x11proto-fonts-dev,
+ x11proto-randr-dev,
+ x11proto-render-dev,
+ x11proto-video-dev,
+ libz160-dev,
+ dpkg-dev (>= 1.14.17),
+ automake,
+ libtool,
+ xutils-dev (>= 1:7.5+1),
+Standards-Version: 3.9.1
+
+Package: xserver-xorg-video-imx
+Architecture: armel
+Depends: libz160, ${shlibs:Depends}, ${misc:Depends}, ${xviddriver:Depends}
+Provides: ${xviddriver:Provides}
+Replaces: xserver-xorg (<< 6.8.2-35), xserver-xorg-driver-imx
+Conflicts: xserver-xorg-driver-imx
+Description: X.Org X server -- i.MX display driver
