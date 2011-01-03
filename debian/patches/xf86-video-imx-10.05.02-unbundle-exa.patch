@@ -1,0 +1,19 @@
+diff -urN src/Makefile.am.orig src/Makefile.am
+--- src/Makefile.am.orig	2010-03-22 18:07:25.000000000 +0000
++++ src/Makefile.am	2010-07-25 10:13:00.000000000 +0000
+@@ -43,14 +43,4 @@
+ 	imx_ext.c \
+ 	imx_ext.h \
+ 	imx_xv_ipu.c \
+-	imx_exa_z160.c \
+-	exa/examodule.c \
+-	exa/exa.c \
+-	exa/exa.h \
+-	exa/exa_accel.c \
+-	exa/exa_glyphs.c \
+-	exa/exa_migration.c \
+-	exa/exa_offscreen.c \
+-	exa/exa_render.c \
+-	exa/exa_priv.h \
+-	exa/exa_unaccel.c
++	imx_exa_z160.c	

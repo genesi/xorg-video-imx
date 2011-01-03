@@ -1,0 +1,29 @@
+--- xf86-video-imx-10.07.11.orig/src/imx_exa_z160.c	2010-08-10 17:49:50.598625750 +0200
++++ xf86-video-imx-10.07.11/src/imx_exa_z160.c	2010-08-10 20:05:20.188609497 +0200
+@@ -11,7 +11,7 @@
+ 
+ #define	IMX_EXA_ENABLE_OFFSCREEN_PIXMAPS	1	/* offscreen pixmap support? */
+ #define	IMX_EXA_ENABLE_SOLID			1	/* solid fill acceleration? */
+-#define	IMX_EXA_ENABLE_EXA_INTERNAL		1	/* EXA code is part of this driver */
++#define	IMX_EXA_ENABLE_EXA_INTERNAL		0	/* EXA code is part of this driver */
+ 
+ /* Set minimum size (pixel area) for accelerating operations. */
+ #define	IMX_EXA_MIN_PIXEL_AREA_SOLID		150
+@@ -126,8 +126,15 @@
+ #define IMXEXAPTR(p) ((IMXEXAPtr)((p)->exaDriverPrivate))
+ 
+ /* Prototype for function not defined in exa.h */
+-extern PixmapPtr exaGetDrawablePixmap(DrawablePtr pDrawable);
+-
++static PixmapPtr
++exaGetDrawablePixmap(DrawablePtr pDrawable)
++{
++     if (!pDrawable) return NULL;
++     if (pDrawable->type == DRAWABLE_WINDOW)
++        return pDrawable->pScreen->GetWindowPixmap ((WindowPtr) pDrawable);
++     else
++        return (PixmapPtr) pDrawable;
++}
+ 
+ /* Called by IMXGetRec */
+ void IMX_EXA_GetRec(ScrnInfoPtr pScrn)

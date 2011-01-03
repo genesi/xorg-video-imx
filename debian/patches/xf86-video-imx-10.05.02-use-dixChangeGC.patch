@@ -1,0 +1,21 @@
+diff -urN src/imx_exa_z160.c.orig src/imx_exa_z160.c
+--- src/imx_exa_z160.c.orig	2010-03-22 18:07:25.000000000 +0000
++++ src/imx_exa_z160.c	2010-07-25 12:44:55.000000000 +0000
+@@ -936,7 +936,7 @@
+ 
+ 		/* Change the graphics context properties based on the PrepareSolid parameters. */
+ 		CARD32 parms[3] = {fPtr->solidALU, fPtr->solidPlaneMask, fPtr->solidColor};
+-		ChangeGC(fPtr->pGC, GCFunction | GCPlaneMask | GCForeground, parms);
++		dixChangeGC(NullClient, fPtr->pGC, GCFunction | GCPlaneMask | GCForeground, parms, NULL);
+ 
+ 		/* Make sure the graphics context is properly setup. */
+ 		ValidateGC(&fPtr->pPixmapDst->drawable, fPtr->pGC);
+@@ -1219,7 +1219,7 @@
+ 
+ 		/* Change the graphics context properties based on the PrepareCopy parameters. */
+ 		CARD32 parms[2] = {fPtr->solidALU, fPtr->solidPlaneMask};
+-		ChangeGC(fPtr->pGC, GCFunction | GCPlaneMask, parms);
++		dixChangeGC(NullClient, fPtr->pGC, GCFunction | GCPlaneMask, parms, NULL);
+ 
+ 		/* Make sure the graphics context is properly setup. */
+ 		ValidateGC(&fPtr->pPixmapDst->drawable, fPtr->pGC);

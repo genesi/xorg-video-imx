@@ -1,0 +1,2 @@
+#xf86-video-imx-10.07.11-missing-exa-symbol.patch
+#xf86-video-imx-10.07.11-use-dixLookupResourceByType.diff

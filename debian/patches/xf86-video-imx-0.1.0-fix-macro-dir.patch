@@ -1,0 +1,22 @@
+diff -ruN xf86-video-imx-0.1.0.orig//Makefile.am xf86-video-imx-0.1.0/Makefile.am
+--- Makefile.am	2009-12-09 18:24:49.000000000 -0600
++++ Makefile.am	2010-03-24 22:34:55.519303305 -0500
+@@ -18,5 +18,6 @@
+ #  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ #  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ 
++ACLOCAL_AMFLAGS = -I m4
+ AUTOMAKE_OPTIONS = foreign
+ SUBDIRS = src man
+diff -ruN xf86-video-imx-0.1.0.orig//configure.ac xf86-video-imx-0.1.0/configure.ac
+--- configure.ac	2009-12-09 18:24:49.000000000 -0600
++++ configure.ac	2010-03-24 22:34:00.909303310 -0500
+@@ -29,7 +29,7 @@
+ AC_CONFIG_SRCDIR([Makefile.am])
+ AM_CONFIG_HEADER([config.h])
+ AC_CONFIG_AUX_DIR(.)
+-AC_CONFIG_MACRO_DIR([/usr/share/aclocal])
++AC_CONFIG_MACRO_DIR([m4])
+ 
+ AM_INIT_AUTOMAKE([dist-bzip2])
+ 
