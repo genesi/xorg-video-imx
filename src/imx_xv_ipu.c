@@ -402,7 +402,7 @@ xf86XVFillKeyHelper1 (ScreenPtr pScreen, CARD32 key, RegionPtr clipboxes)
 	(void) ChangeGC(gc, GCForeground|GCSubwindowMode, pval);
 	ValidateGC(root, gc);
 
-	rects = xalloc (nbox * sizeof(xRectangle));
+	rects = malloc (nbox * sizeof(xRectangle));
 
 	for(i = 0; i < nbox; i++, pbox++) 
 	{
@@ -412,7 +412,7 @@ xf86XVFillKeyHelper1 (ScreenPtr pScreen, CARD32 key, RegionPtr clipboxes)
 		rects[i].height = pbox->y2 - pbox->y1;
 	}
 	(*gc->ops->PolyFillRect)(root, gc, nbox, rects);
-	xfree (rects);
+	free (rects);
 	FreeScratchGC (gc);
 }
 
