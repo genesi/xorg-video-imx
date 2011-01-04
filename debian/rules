@@ -48,8 +48,8 @@ build-stamp: configure
 
 	test -d build || mkdir build
 	test -d build-udeb || mkdir build-udeb
-	cd build && ../configure --enable-xv $(common_confflags)
-	cd build-udeb && ../configure --disable-xv $(common_confflags)
+	cd build && ../configure $(common_confflags)
+	cd build-udeb && ../configure $(common_confflags)
 	cd build && $(MAKE)
 	cd build/man && $(MAKE)
 	cd build-udeb && $(MAKE)
