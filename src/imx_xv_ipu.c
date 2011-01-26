@@ -585,8 +585,8 @@ begin:
 	    	goto begin;
 	}
 
-	xf86XVFillKeyHelper(pScreen, pFB->colour_key, pClip);
-// or	xf86XVFillKeyHelperDrawable(pDraw, pFB->colour_key, pClip);
+	xf86XVFillKeyHelperDrawable(pDraw, pFB->colour_key, pClip);
+
 	if(pFB->isInit)
 	{
 		memcpy(pFB->ipu_handle.inbuf_start[pFB->next_update_idx],Buffer,pFB->ipu_handle.ifr_size);
