@@ -113,7 +113,7 @@ static XF86ImageRec MXImage[] =
 {
 	XVIMAGE_YUY2,
 	XVIMAGE_UYVY,
-	XVIMAGE_YV12,
+//	XVIMAGE_YV12,
 	XVIMAGE_I420,
 	/* NV12 */
 	{ FOURCC_NV12, XvYUV, LSBFirst, {'N','V','1','2', \
