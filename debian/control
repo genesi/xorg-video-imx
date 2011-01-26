@@ -27,3 +27,9 @@ Provides: ${xviddriver:Provides}
 Replaces: xserver-xorg (<< 6.8.2-35), xserver-xorg-driver-imx
 Conflicts: xserver-xorg-driver-imx
 Description: X.Org X server -- i.MX display driver
+
+Package: x11proto-imxext-dev
+Architecture: all
+Depends: xserver-xorg-video-imx
+Description: X.Org X server -- i.MX extension
+
