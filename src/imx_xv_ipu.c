@@ -384,37 +384,6 @@ MXQueryBestSize
 	*Width  = DrawableWidth;
 	*Height = DrawableHeight;
 }
-_X_EXPORT void
-xf86XVFillKeyHelper1 (ScreenPtr pScreen, CARD32 key, RegionPtr clipboxes)
-{
-	DrawablePtr root = &WindowTable[pScreen->myNum]->drawable;
-	XID pval[2];
-	BoxPtr pbox = REGION_RECTS(clipboxes);
-	int i, nbox = REGION_NUM_RECTS(clipboxes);
-	xRectangle *rects;
-	GCPtr gc;
-
-	if(!xf86Screens[pScreen->myNum]->vtSema) return;
-
-	gc = GetScratchGC(root->depth, pScreen);
-	pval[0] = key;
-	pval[1] = IncludeInferiors;
-	(void) ChangeGC(gc, GCForeground|GCSubwindowMode, pval);
-	ValidateGC(root, gc);
-
-	rects = malloc (nbox * sizeof(xRectangle));
-
-	for(i = 0; i < nbox; i++, pbox++) 
-	{
-		rects[i].x = pbox->x1;
-		rects[i].y = pbox->y1;
-		rects[i].width = pbox->x2 - pbox->x1;
-		rects[i].height = pbox->y2 - pbox->y1;
-	}
-	(*gc->ops->PolyFillRect)(root, gc, nbox, rects);
-	free (rects);
-	FreeScratchGC (gc);
-}
 
 static int MXForeground(void)
 {
@@ -520,8 +489,12 @@ static int MXSetupNewIPUTask(IMXPtr pFB,int ImageID)
 	pFB->output_para.fb_disp.pos.x = pFB->DstX;
 	pFB->output_para.fb_disp.pos.y = pFB->DstY;
 	pFB->output_para.fb_disp.fb_num= MXForeground();
-	ret = mxc_ipu_lib_task_init(&pFB->input_param,NULL, &pFB->output_para,
-    		NULL, mode, &pFB->ipu_handle);
+
+	ret = mxc_ipu_lib_task_init(	&pFB->input_param,
+					NULL,
+					&pFB->output_para,
+					mode,
+					&pFB->ipu_handle);
 	if (ret < 0) {
     		TRACE("mxc_ipu_lib_task_init failed!\n");
 	    	goto ipu_setup_done;
@@ -612,8 +585,8 @@ begin:
 	    	goto begin;
 	}
 
-	xf86XVFillKeyHelper1(pScreen, pFB->colour_key, pClip);
-
+	xf86XVFillKeyHelper(pScreen, pFB->colour_key, pClip);
+// or	xf86XVFillKeyHelperDrawable(pDraw, pFB->colour_key, pClip);
 	if(pFB->isInit)
 	{
 		memcpy(pFB->ipu_handle.inbuf_start[pFB->next_update_idx],Buffer,pFB->ipu_handle.ifr_size);
