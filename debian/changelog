@@ -1,12 +1,9 @@
-<<<<<<< HEAD
-=======
 xserver-xorg-video-imx (10.11.00) maverick; urgency=low
 
   * offscreen EXA pixmap support
 
  -- Matt Sealey <matt@genesi-usa.com>  Fri, 30 Dec 2010 14:21:09 -0600
 
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
 xserver-xorg-video-imx (10.10.00) maverick; urgency=low
 
   * X.org imx video driver for the iMX5 platform.

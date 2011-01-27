@@ -239,7 +239,7 @@ IMXFreeRec(ScrnInfoPtr pScrn)
 	if (pScrn->driverPrivate == NULL)
 		return;
 	IMX_EXA_FreeRec(pScrn);
-	xfree(pScrn->driverPrivate);
+	free(pScrn->driverPrivate);
 	pScrn->driverPrivate = NULL;
 }
 
@@ -311,7 +311,7 @@ IMXProbe(DriverPtr drv, int flags)
 			}
 		}
 	}
-	xfree(devSections);
+	free(devSections);
 #if IMX_XVIDEO_ENABLE
 	xf86XVRegisterGenericAdaptorDriver(MXXVInitializeAdaptor);
 #endif
@@ -508,7 +508,7 @@ IMXPreInit(ScrnInfoPtr pScrn, int flags)
 
 	/* handle options */
 	xf86CollectOptions(pScrn, NULL);
-	if (!(fPtr->Options = xalloc(sizeof(IMXOptions))))
+	if (!(fPtr->Options = malloc(sizeof(IMXOptions))))
 		return FALSE;
 	memcpy(fPtr->Options, IMXOptions, sizeof(IMXOptions));
 	xf86ProcessOptions(pScrn->scrnIndex, fPtr->pEnt->device->options, fPtr->Options);
@@ -811,7 +811,7 @@ IMXScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	fPtr->fbstart = fPtr->fbmem + fPtr->fboff;
 
 	if (fPtr->shadowFB) {
-	    fPtr->shadow = xcalloc(1, pScrn->virtualX * pScrn->virtualY *
+	    fPtr->shadow = calloc(1, pScrn->virtualX * pScrn->virtualY *
 				   pScrn->bitsPerPixel);
 
 	    if (!fPtr->shadow) {
@@ -1025,11 +1025,11 @@ IMXCloseScreen(int scrnIndex, ScreenPtr pScreen)
 	fbdevHWUnmapVidmem(pScrn);
 	if (fPtr->shadow) {
 	    shadowRemove(pScreen, pScreen->GetScreenPixmap(pScreen));
-	    xfree(fPtr->shadow);
+	    free(fPtr->shadow);
 	    fPtr->shadow = NULL;
 	}
 	if (fPtr->pDGAMode) {
-	  xfree(fPtr->pDGAMode);
+	  free(fPtr->pDGAMode);
 	  fPtr->pDGAMode = NULL;
 	  fPtr->nDGAMode = 0;
 	}
@@ -1221,7 +1221,7 @@ IMXDGAAddModes(ScrnInfoPtr pScrn)
     DGAModePtr pDGAMode;
 
     do {
-	pDGAMode = xrealloc(fPtr->pDGAMode,
+	pDGAMode = realloc(fPtr->pDGAMode,
 			    (fPtr->nDGAMode + 1) * sizeof(DGAModeRec));
 	if (!pDGAMode)
 	    break;

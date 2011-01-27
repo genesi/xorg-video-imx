@@ -112,7 +112,7 @@ IMX_EXA_OffscreenMerge (IMXPtr imxPtr, ExaOffscreenArea *area)
 	area->next->prev = area;
     else
 	imxPtr->offScreenAreas->prev = area;
-    xfree (next);
+    free (next);
 
     imxPtr->numOffscreenAvailable--;
 }
@@ -352,7 +352,7 @@ IMX_EXA_OffscreenAlloc (ScreenPtr pScreen, int size, int align,
     /* save extra space in new area */
     if (real_size < area->size)
     {
-	ExaOffscreenArea   *new_area = xalloc (sizeof (ExaOffscreenArea));
+	ExaOffscreenArea   *new_area = malloc (sizeof (ExaOffscreenArea));
 	if (!new_area)
 	    return NULL;
 	new_area->base_offset = area->base_offset;
@@ -419,7 +419,7 @@ IMX_EXA_OffscreenInit (ScreenPtr pScreen)
     ExaOffscreenArea *area;
 
     /* Allocate a big free area */
-    area = xalloc (sizeof (ExaOffscreenArea));
+    area = malloc (sizeof (ExaOffscreenArea));
 
     if (!area)
 	return FALSE;
@@ -456,7 +456,7 @@ IMX_EXA_OffscreenFini (ScreenPtr pScreen)
     while ((area = imxPtr->offScreenAreas))
     {
 	imxPtr->offScreenAreas = area->next;
-	xfree (area);
+	free (area);
     }
 }
 

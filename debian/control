@@ -1,12 +1,8 @@
 Source: xserver-xorg-video-imx
 Section: x11
 Priority: optional
-<<<<<<< HEAD
-Maintainer: Steev Klimaszewski
-=======
 Maintainer: Matt Sealey <matt@genesi-usa.com>
 Uploaders: Steev Klimaszewski <steev@genesi-usa.com>, Konstantinos Margaritis <markos@genesi-usa.com>, Luca Barbato <lu_zero@genesi-usa.com>
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
 Build-Depends:
  debhelper (>= 5.0.0),
  quilt,
@@ -30,15 +26,10 @@ Depends: libz160, ${shlibs:Depends}, ${misc:Depends}, ${xviddriver:Depends}
 Provides: ${xviddriver:Provides}
 Replaces: xserver-xorg (<< 6.8.2-35), xserver-xorg-driver-imx
 Conflicts: xserver-xorg-driver-imx
-<<<<<<< HEAD
-Description: X.Org X server -- imx display driver
- This package provides the driver for the Linux framebuffer device (aka
- 'imx').
- .
- More information about X.Org can be found at:
- <URL:http://www.X.org>
- .
- This package is built from the X.org xf86-video-imx driver module.
-=======
 Description: X.Org X server -- i.MX display driver
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
+
+Package: x11proto-imxext-dev
+Architecture: all
+Depends: xserver-xorg-video-imx
+Description: X.Org X server -- i.MX extension
+

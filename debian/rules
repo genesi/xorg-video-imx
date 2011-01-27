@@ -3,22 +3,14 @@
 # Copyright © 2004 Scott James Remnant <scott@netsplit.com>
 # Copyright © 2005 Daniel Stone <daniel@fooishbar.org>
 # Copyright © 2005 David Nusinow <dnusinow@debian.org>
-<<<<<<< HEAD
-=======
 # Copyright © 2005 Matt Sealey <matt@genesi-usa.com>
-
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
 include debian/xsfbs/xsfbs.mk
 
-<<<<<<< HEAD
 CFLAGS = -Wall -g -I/usr/src/linux-headers-2.6.31.14.14-efikamx/include
-=======
-CFLAGS = -Wall -g
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
 ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
 else
@@ -56,13 +48,10 @@ build-stamp: configure
 
 	test -d build || mkdir build
 	test -d build-udeb || mkdir build-udeb
-	cd build && ../configure --enable-xv $(common_confflags)
-	cd build-udeb && ../configure --disable-xv $(common_confflags)
+	cd build && ../configure $(common_confflags)
+	cd build-udeb && ../configure $(common_confflags)
 	cd build && $(MAKE)
-<<<<<<< HEAD
 	cd build/man && $(MAKE)
-=======
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
 	cd build-udeb && $(MAKE)
 	>$@
 
@@ -91,10 +80,7 @@ install: build
 	dh_installdirs
 
 	cd build && $(MAKE) DESTDIR=$(CURDIR)/debian/tmp install
-<<<<<<< HEAD
 	cd build/man && $(MAKE) DESTDIR=$(CURDIR)/debian/tmp install
-=======
->>>>>>> 2bbc76375b1a7222f19fe341741afec62b43e7d4
 	cd build-udeb && $(MAKE) DESTDIR=$(CURDIR)/debian/tmp-udeb install
 
 # Build architecture-dependent files here.

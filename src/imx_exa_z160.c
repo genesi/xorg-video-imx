@@ -258,7 +258,7 @@ void IMX_EXA_FreeRec(ScrnInfoPtr pScrn)
 		return;
 	}
 
-	xfree(imxPtr->exaDriverPrivate);
+	free(imxPtr->exaDriverPrivate);
 	imxPtr->exaDriverPrivate = NULL;
 }
 
@@ -959,7 +959,7 @@ Z160EXACreatePixmap2(ScreenPtr pScreen, int width, int height,
 	/* If we got here and still have no pixmap memory, then cleanup */
 	/* and setup to return failure. */
 	if (NULL == fPixmapPtr->ptr) {
-		xfree(fPixmapPtr);
+		free(fPixmapPtr);
 		fPixmapPtr = NULL;
 	}
 
@@ -985,11 +985,11 @@ Z160EXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
 	/* Is pixmap allocated in system memory? */
 	} else if (NULL != fPixmapPtr->sysPtr) {
 
-		xfree(fPixmapPtr->sysPtr);
+		free(fPixmapPtr->sysPtr);
 	}
 
 	/* Free the driver private data structure associated with pixmap. */
-	xfree(fPixmapPtr);
+	free(fPixmapPtr);
 }
 
 static Bool
@@ -2532,7 +2532,7 @@ Bool IMX_EXA_ScreenInit(int scrnIndex, ScreenPtr pScreen)
 		if (!exaDriverInit(pScreen, imxPtr->exaDriverPtr)) {
 
 			xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "EXA initialization failed.\n");
-			xfree(imxPtr->exaDriverPtr);
+			free(imxPtr->exaDriverPtr);
 			imxPtr->exaDriverPtr = NULL;
 			Z160ContextRelease(fPtr);
 			return FALSE;
@@ -2615,7 +2615,7 @@ Bool IMX_EXA_CloseScreen(int scrnIndex, ScreenPtr pScreen)
 #endif
 
 		exaDriverFini(pScreen);
-		xfree(imxPtr->exaDriverPtr);
+		free(imxPtr->exaDriverPtr);
 		imxPtr->exaDriverPtr = NULL;
 	}
 
