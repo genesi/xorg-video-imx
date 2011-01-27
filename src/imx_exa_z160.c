@@ -37,9 +37,9 @@
 #define	IMX_EXA_ENABLE_EXA_INTERNAL	0	/* EXA code is in this driver */
 
 /* Set minimum size (pixel area) for accelerating operations. */
-#define	IMX_EXA_MIN_PIXEL_AREA_SOLID		150
-#define	IMX_EXA_MIN_PIXEL_AREA_COPY		150
-#define	IMX_EXA_MIN_PIXEL_AREA_COMPOSITE	150
+#define	IMX_EXA_MIN_PIXEL_AREA_SOLID		0
+#define	IMX_EXA_MIN_PIXEL_AREA_COPY		0
+#define	IMX_EXA_MIN_PIXEL_AREA_COMPOSITE	0
 
 /* This flag must be enabled to perform any debug logging */
 #define IMX_EXA_DEBUG_MASTER		0
@@ -1153,9 +1153,10 @@ Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
 	unsigned pixmapArea = pPixmap->drawable.width * pPixmap->drawable.height;
 
 	/* Can't accelerate solid fill unless pixmap has minimum number of pixels. */
+	/* HACK: Disable this for now as we have set IMX_EXA_MIN_PIXEL_AREA_SOLID to 0
 	if (pixmapArea < IMX_EXA_MIN_PIXEL_AREA_SOLID) {
 		return FALSE;
-	}
+	}*/
 
 	/* Access screen associated with this pixmap */
 	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
@@ -1432,11 +1433,12 @@ Z160EXAPrepareCopy(
 	unsigned pixmapAreaSrc = pPixmapSrc->drawable.width * pPixmapSrc->drawable.height;
 
 	/* Can't accelerate copy unless pixmaps have minimum number of pixels. */
+	/* HACK: Disable this for now as we have set IMX_EXA_MIN_PIXEL_AREA_COPY to 0
 	if ((pixmapAreaDst < IMX_EXA_MIN_PIXEL_AREA_COPY) || 
 		(pixmapAreaSrc < IMX_EXA_MIN_PIXEL_AREA_COPY)) {
 
 		return FALSE;
-	}
+	}*/
 
 	/* Access the screen associated with this pixmap. */
 	ScrnInfoPtr pScrn = xf86Screens[pPixmapDst->drawable.pScreen->myNum];
@@ -1778,18 +1780,20 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 
 	/* Can't accelerate composite unless target pixmap has minimum number of pixels. */
 	unsigned pixmapAreaDst = pPixmapDst->drawable.width * pPixmapDst->drawable.height;
+	/* HACK: Disable this for now as we have set IMX_EXA_MIN_PIXEL_AREA_COMPOSITE to 0
 	if (pixmapAreaDst < IMX_EXA_MIN_PIXEL_AREA_COMPOSITE) {
 		return FALSE;
-	}
+	}*/
 
 	/* Can't accelerate composite unless pixmap from non-repeating source picture */
 	/* has a minimum number of pixels. */
 	if (! pPictureSrc->repeat) {
 
 		unsigned pixmapArea = pPixmapSrc->drawable.width * pPixmapSrc->drawable.height;
+		/* HACK: Disable this for now as we have set IMX_EXA_MIN_PIXEL_AREA_COMPOSITE to 0
 		if (pixmapArea < IMX_EXA_MIN_PIXEL_AREA_COMPOSITE) {
 			return FALSE;
-		}
+		}*/
 	}
 
 	/* Can't accelerate composite unless pixmap from defined non-repeating mask picture */
@@ -1797,9 +1801,10 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 	if ((NULL != pPictureMask) && !pPictureMask->repeat) {
 
 		unsigned pixmapArea = pPixmapMask->drawable.width * pPixmapMask->drawable.height;
+		/* HACK: Disable this for now as we have set IMX_EXA_MIN_PIXEL_AREA_COMPOSITE to 0
 		if (pixmapArea < IMX_EXA_MIN_PIXEL_AREA_COMPOSITE) {
 			return FALSE;
-		}
+		}*/
 	}
 
 	/* Access screen associated with dst pixmap (same screen as for src pixmap). */
