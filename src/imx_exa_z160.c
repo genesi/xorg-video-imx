@@ -455,8 +455,7 @@ Z160CanAcceleratePixmapRectangles(PixmapPtr pPixmap)
 	return TRUE;
 }
 
-static
-Bool
+static Bool
 Z160CanAcceleratePixmap(PixmapPtr pPixmap)
 {
 	/* Pixmap must be defined */
@@ -716,7 +715,7 @@ Z160ContextGet(IMXEXAPtr fPtr)
 	return fPtr->gpuContext;
 }
 
-static void
+static inline void
 Z160MarkOperationBusy(IMXEXAPtr fPtr, Bool busy)
 {
 	fPtr->gpuOpBusy = busy;
@@ -812,7 +811,7 @@ Z160EXAFinishPipelinedAccess(PixmapPtr pPixmap, int index)
 #define IMX_EXA_ALIGN(offset, align) (((offset) + (align) - 1) - \
 	(((offset) + (align) - 1) % (align)))
 
-static Bool
+static inline Bool
 Z160EXAPrepareAccess(PixmapPtr pPixmap, int index)
 {
 	/* Since EXA_HANDLES_PIXMAPS flag is set, then there nothing to do. */
@@ -821,14 +820,14 @@ Z160EXAPrepareAccess(PixmapPtr pPixmap, int index)
 	return TRUE;
 }
 
-static void
+static inline void
 Z160EXAFinishAccess(PixmapPtr pPixmap, int index)
 {
 	/* Since EXA_HANDLES_PIXMAPS flag is set, then there nothing to do. */
 	/* But this callback has to be implemented. */
 }
 
-static int
+static inline int
 Z160EXAComputeSystemMemoryPitch(int width, int bitsPerPixel)
 {
 	return ((width * bitsPerPixel + FB_MASK) >> FB_SHIFT) * sizeof(FbBits);
@@ -1112,7 +1111,7 @@ Z160EXAPixmapIsOffscreen(PixmapPtr pPixmap)
 
 #else
 
-static Bool
+static inline Bool
 Z160EXAPrepareAccess(PixmapPtr pPixmap, int index)
 {
 	/* Frame buffer memory is not allocated through Z160, so nothing to do. */
@@ -1122,7 +1121,7 @@ Z160EXAPrepareAccess(PixmapPtr pPixmap, int index)
 	return TRUE;
 }
 
-static void
+static inline void
 Z160EXAFinishAccess(PixmapPtr pPixmap, int index)
 {
 	/* Nothing to do, but this callback has to be implemented */
