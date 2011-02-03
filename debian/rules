@@ -3,7 +3,7 @@
 # Copyright © 2004 Scott James Remnant <scott@netsplit.com>
 # Copyright © 2005 Daniel Stone <daniel@fooishbar.org>
 # Copyright © 2005 David Nusinow <dnusinow@debian.org>
-# Copyright © 2005 Matt Sealey <matt@genesi-usa.com>
+# Copyright © 2011 Konstantinos Margaritis <markos@genesi-usa.com>
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
@@ -15,7 +15,7 @@ CFLAGS = -Wall -g -I/usr/src/linux-headers-2.6.31.14.14-efikamx/include
 ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
 else
-	CFLAGS += -O2 -finline
+	CFLAGS += -O3 -finline
 endif
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
 	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
