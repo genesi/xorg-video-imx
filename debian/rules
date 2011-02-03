@@ -7,6 +7,7 @@
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
+export ENABLE_TLSF_MALLOC=1
 
 include debian/xsfbs/xsfbs.mk
 
@@ -33,10 +34,15 @@ endif
 # kbd_drv.a isn't phenomenally useful; kbd_drv.so more so
 confflags += --disable-static
 
+ifdef ENABLE_TLSF_MALLOC
+	CFLAGS +=-DENABLE_TLSF_MALLOC=1
+	LDFLAGS+=${PWD}/tlsf/src/tlsf.o
+endif
+
 common_confflags = \
 	--prefix=/usr --mandir=\$${prefix}/share/man \
 	--infodir=\$${prefix}/share/info $(confflags) \
-	CFLAGS="$(CFLAGS)"
+	CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
 
 configure: $(STAMP_DIR)/patch
 	dh_testdir
@@ -48,6 +54,10 @@ build-stamp: configure
 
 	test -d build || mkdir build
 	test -d build-udeb || mkdir build-udeb
+
+ifdef ENABLE_TLSF_MALLOC
+	cd tlsf/src && make TLSF_SHARED=1
+endif
 	cd build && ../configure $(common_confflags)
 	cd build-udeb && ../configure $(common_confflags)
 	cd build && $(MAKE)
@@ -60,6 +70,9 @@ clean: xsfclean
 	dh_testroot
 	rm -f build-stamp
 
+ifdef ENABLE_TLSF_MALLOC
+	(cd tlsf/src && make clean)
+endif
 	rm -f config.cache config.log config.status
 	rm -f */config.cache */config.log */config.status
 	rm -f conftest* */conftest*

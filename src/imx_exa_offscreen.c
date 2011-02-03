@@ -112,7 +112,11 @@ IMX_EXA_OffscreenMerge (IMXPtr imxPtr, ExaOffscreenArea *area)
 	area->next->prev = area;
     else
 	imxPtr->offScreenAreas->prev = area;
+#ifdef ENABLE_TLSF_MALLOC
+    tlsf_free (next);
+#else
     free (next);
+#endif
 
     imxPtr->numOffscreenAvailable--;
 }
@@ -182,18 +186,21 @@ IMX_EXA_OffscreenKickOut (ScreenPtr pScreen, ExaOffscreenArea *area)
 static void
 IMX_EXA_UpdateEvictionCost(ExaOffscreenArea *area, unsigned offScreenCounter)
 {
+    static unsigned max_age = UINT_MAX/2;
     unsigned age;
 
     if (area->state == ExaOffscreenAvail)
 	return;
 
     age = offScreenCounter - area->last_use;
+    age = age + ((max_age-age) & (age-max_age)>>31);
+    area->last_use = offScreenCounter - age;
 
     /* This is unlikely to happen, but could result in a division by zero... */
-    if (age > (UINT_MAX / 2)) {
+/*    if (age > (UINT_MAX / 2)) {
 	age = UINT_MAX / 2;
 	area->last_use = offScreenCounter - age;
-    }
+    }*/
 
     area->eviction_cost = area->size / age;
 }
@@ -252,6 +259,8 @@ IMX_EXA_FindAreaToEvict(IMXPtr imxPtr, int size, int align)
     return best;
 }
 
+#define AREA_SCORE(area) (area->size / (double)(imxPtr->offScreenCounter - area->last_use))
+
 /**
  * exaOffscreenAlloc allocates offscreen memory
  *
@@ -277,10 +286,10 @@ IMX_EXA_OffscreenAlloc (ScreenPtr pScreen, int size, int align,
                    ExaOffscreenSaveProc save,
                    pointer privData)
 {
-    ExaOffscreenArea *area;
+    ExaOffscreenArea *area, *begin, *best;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
     IMXPtr imxPtr = IMXPTR(pScrn);
-    int real_size = 0, largest_avail = 0;
+    int real_size = 0, largest_avail = 0, tmp;
 
     IMX_EXA_OffscreenValidate (pScreen);
     if (!align)
@@ -321,8 +330,54 @@ IMX_EXA_OffscreenAlloc (ScreenPtr pScreen, int size, int align,
 
     if (!area)
     {
-	area = IMX_EXA_FindAreaToEvict(imxPtr, size, align);
+        double best_score;
+        /*
+         * Kick out existing users to make space.
+         *
+         * First, locate a region which can hold the desired object.
+         */
 
+       /* prev points at the first object to boot */
+        best = NULL;
+        best_score = UINT_MAX;
+        for (begin = imxPtr->offScreenAreas; begin != NULL;
+             begin = begin->next)
+        {
+            int avail;
+            double score;
+            ExaOffscreenArea *scan;
+
+            if (begin->state == ExaOffscreenLocked)
+                continue;
+
+            /* adjust size needed to account for alignment loss for this area */
+            real_size = size;
+            tmp = begin->base_offset % align;
+            if (tmp)
+                real_size += (align - tmp);
+
+            avail = 0;
+            score = 0;
+            /* now see if we can make room here, and how "costly" it'll be. */
+            for (scan = begin; scan != NULL; scan = scan->next)
+            {
+                if (scan->state == ExaOffscreenLocked) {
+                    /* Can't make room here, start after this locked area. */
+                    begin = scan;
+                    break;
+                }
+                score += AREA_SCORE(scan);
+                avail += scan->size;
+                if (avail >= real_size)
+                    break;
+            }
+            /* Is it the best option we've found so far? */
+            if (avail >= real_size && score < best_score) {
+                best = begin;
+                best_score = score;
+            }
+        }
+        area = best;
 	if (!area)
 	{
 	    DBG_OFFSCREEN (("Alloc 0x%x -> NOSPACE\n", size));
@@ -331,28 +386,35 @@ IMX_EXA_OffscreenAlloc (ScreenPtr pScreen, int size, int align,
 	    return NULL;
 	}
 
-	/* adjust size needed to account for alignment loss for this area */
-	real_size = size + (area->base_offset + area->size - size) % align;
+        /* adjust size needed to account for alignment loss for this area */
+        real_size = size;
+        tmp = area->base_offset % align;
+        if (tmp)
+            real_size += (align - tmp);
 
-	/*
-	 * Kick out first area if in use
-	 */
-	if (area->state != ExaOffscreenAvail)
+        /*
+         * Kick out first area if in use
+         */
+        if (area->state != ExaOffscreenAvail)
 	    area = IMX_EXA_OffscreenKickOut (pScreen, area);
-	/*
-	 * Now get the system to merge the other needed areas together
-	 */
-	while (area->size < real_size)
-	{
-	    assert (area->next && area->next->state == ExaOffscreenRemovable);
+        /*
+         * Now get the system to merge the other needed areas together
+         */
+        while (area->size < real_size)
+        {
+            assert (area->next && area->next->state == ExaOffscreenRemovable);
 	    (void) IMX_EXA_OffscreenKickOut (pScreen, area->next);
-	}
+        }
     }
 
     /* save extra space in new area */
     if (real_size < area->size)
     {
+#ifdef ENABLE_TLSF_MALLOC
+	ExaOffscreenArea   *new_area = tlsf_malloc (sizeof (ExaOffscreenArea));
+#else
 	ExaOffscreenArea   *new_area = malloc (sizeof (ExaOffscreenArea));
+#endif
 	if (!new_area)
 	    return NULL;
 	new_area->base_offset = area->base_offset;
@@ -419,7 +481,12 @@ IMX_EXA_OffscreenInit (ScreenPtr pScreen)
     ExaOffscreenArea *area;
 
     /* Allocate a big free area */
+
+#ifdef ENABLE_TLSF_MALLOC
+    area = tlsf_malloc (sizeof (ExaOffscreenArea));
+#else
     area = malloc (sizeof (ExaOffscreenArea));
+#endif
 
     if (!area)
 	return FALSE;
@@ -456,7 +523,11 @@ IMX_EXA_OffscreenFini (ScreenPtr pScreen)
     while ((area = imxPtr->offScreenAreas))
     {
 	imxPtr->offScreenAreas = area->next;
+#ifdef ENABLE_TLSF_MALLOC
+	tlsf_free (area);
+#else
 	free (area);
+#endif
     }
 }
 
