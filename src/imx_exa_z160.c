@@ -735,8 +735,7 @@ Z160Sync(IMXEXAPtr fPtr)
 	/* If there is no GPU context, then no reason to sync. */
 	/* Do not use Z160ContextGet because it will regain */
 	/* access if we currently do not have it (because idle). */
-	void* gpuContext = fPtr->gpuContext;
-	if (NULL == gpuContext) {
+	if (NULL == fPtr->gpuContext) {
 		return;
 	}
 	
@@ -759,7 +758,7 @@ Z160Sync(IMXEXAPtr fPtr)
 #endif
 
 		/* Do the wait */
-		z160_sync(gpuContext);
+		z160_sync(fPtr->gpuContext);
 
 		/* Update state */
 		fPtr->gpuSynced = TRUE;
@@ -1195,12 +1194,6 @@ Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
 		return FALSE;
 	}
 
-	/* Access GPU context */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return FALSE;
-	}
-
 	/* Only 8, 16, and 32-bit pixmaps are supported. */
 	/* Associate a pixel format which is required for configuring */
 	/* the Z160.  It does not matter what format is chosen as long as it */
@@ -1265,12 +1258,6 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Access the GPU */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return;
-	}
-
 	/* Nothing to unless rectangle has area. */
 	if ((x1 >= x2) || (y1 >= y2)) {
 		return;
@@ -1308,8 +1295,8 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 	/* Need to prepare the GPU for accelerated solid fill? */
 	} else if (accel && !fPtr->gpuOpSetup) {
 
-		z160_setup_buffer_target(gpuContext, &fPtr->z160BufferDst);
-		z160_setup_fill_solid(gpuContext, fPtr->z160Color);
+		z160_setup_buffer_target(fPtr->gpuContext, &fPtr->z160BufferDst);
+		z160_setup_fill_solid(fPtr->gpuContext, fPtr->z160Color);
 
 		fPtr->gpuOpSetup = TRUE;
 	}
@@ -1323,7 +1310,7 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 	/* Perform GPU accelerated solid fill? */
 	} else {
 
-		z160_fill_solid_rect(gpuContext, x1, y1, width, height);
+		z160_fill_solid_rect(fPtr->gpuContext, x1, y1, width, height);
 	}
 
 #if IMX_EXA_DEBUG_SOLID 
@@ -1375,17 +1362,11 @@ Z160EXADoneSolid(PixmapPtr pPixmap)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Access the GPU */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return;
-	}
-
 	/* Finalize any GPU operations if any where used */
 	if (fPtr->gpuOpSetup) {
 
 		/* Flush pending operations to the GPU. */
-		z160_flush(gpuContext);
+		z160_flush(fPtr->gpuContext);
 
 		/* Update state. */
 		fPtr->gpuSynced = FALSE;
@@ -1445,12 +1426,6 @@ Z160EXAPrepareCopy(
 	/* Access driver specific data */
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
-
-	/* Access GPU context */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return FALSE;
-	}
 
 	/* Determine the bits-per-pixels for src and dst pixmaps. */
 	int dstPixmapBitsPerPixel = pPixmapDst->drawable.bitsPerPixel;
@@ -1557,64 +1532,15 @@ Z160EXACopy(PixmapPtr pPixmapDst, int srcX, int srcY, int dstX, int dstY, int wi
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Access the GPU */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return;
-	}
-
-	/* Determine number of pixels in operation */
-//	unsigned opPixels = width * height;
-
-	/* Flag set to accelerate when operation involves minimum number of pixels. */
-	/* Or a previous acceleration was started and not yet synced to its completion. */
-//	Bool accel = (opPixels >= IMX_EXA_MIN_PIXEL_AREA_SOLID) || !fPtr->gpuSynced;
-	Bool accel = TRUE;
-
-	/* Need to prepare for software fallback copy? */
-	if (!accel && (NULL == fPtr->pGC)) {
-
-		/* Prepare source and target pixmaps for CPU access */
-		Z160EXAPreparePipelinedAccess(fPtr->pPixmapDst, EXA_PREPARE_DEST);
-		Z160EXAPreparePipelinedAccess(fPtr->pPixmapSrc, EXA_PREPARE_SRC);
-
-		/* Create scratch graphics context */
-		fPtr->pGC = GetScratchGC(fPtr->pPixmapDst->drawable.depth,
-						fPtr->pPixmapDst->drawable.pScreen);
-
-		/* Change the graphics context properties based on the PrepareCopy parameters. */
-		CARD32 parms[2] = {fPtr->solidALU, fPtr->solidPlaneMask};
-		dixChangeGC(NullClient, fPtr->pGC, GCFunction | GCPlaneMask, parms, NULL);
-
-		/* Make sure the graphics context is properly setup. */
-		ValidateGC(&fPtr->pPixmapDst->drawable, fPtr->pGC);
-
-	/* Need to prepare the GPU for accelerated copy? */
-	} else if (accel && !fPtr->gpuOpSetup) {
-
-		z160_setup_buffer_target(gpuContext, &fPtr->z160BufferDst);
-		z160_setup_copy(gpuContext, &fPtr->z160BufferSrc,
+	if (!fPtr->gpuOpSetup) {
+		z160_setup_buffer_target(fPtr->gpuContext, &fPtr->z160BufferDst);
+		z160_setup_copy(fPtr->gpuContext, &fPtr->z160BufferSrc,
 					fPtr->copyDirX, fPtr->copyDirY);
 
 		fPtr->gpuOpSetup = TRUE;
 	}
 
-	/* Perform software fallback copy? */
-	if (!accel) {
-
-		fbCopyArea(
-			&fPtr->pPixmapSrc->drawable,
-			&fPtr->pPixmapDst->drawable,
-			fPtr->pGC,
-			srcX, srcY,
-			width, height,
-			dstX, dstY);
-
-	/* Perform GPU accelerated copy? */
-	} else {
-
-		z160_copy_rect(gpuContext, dstX, dstY, width, height, srcX, srcY);
-	}
+	z160_copy_rect(fPtr->gpuContext, dstX, dstY, width, height, srcX, srcY);
 
 #if IMX_EXA_DEBUG_INSTRUMENT_SIZES
 	const unsigned long size = 
@@ -1665,17 +1591,11 @@ Z160EXADoneCopy(PixmapPtr pPixmapDst)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Access the GPU */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return;
-	}
-
 	/* Finalize any GPU operations if any where used */
 	if (fPtr->gpuOpSetup) {
 
 		/* Flush pending operations to the GPU. */
-		z160_flush(gpuContext);
+		z160_flush(fPtr->gpuContext);
 
 		/* Update state */
 		fPtr->gpuSynced = FALSE;
@@ -1999,22 +1919,15 @@ Z160EXAPrepareComposite(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Access GPU context */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return FALSE;
-	}
-
 	/* Map the Xrender blend op into the Z160 blend op. */
 	Z160_BLEND z160BlendOp = Z160SetupBlendOpTable[op];
 
 	/* Setup the target buffer */
-	z160_setup_buffer_target(gpuContext, &z160BufferDst);
+	z160_setup_buffer_target(fPtr->gpuContext, &z160BufferDst);
 
 	/* Mask blend? */
 	fPtr->gpuOpSetup = FALSE;
 	if (NULL != pPictureMask) {
-
 		/* Determine Z160 config that matches pixel format used in mask picture */
 		Z160Buffer z160BufferMask;
 		if (!Z160GetPictureConfig(pScrn, pPictureMask, &z160BufferMask)) {
@@ -2023,67 +1936,57 @@ Z160EXAPrepareComposite(
 
 		/* Blend repeating source using a mask */
 		if (pPictureSrc->repeat) {
-
 			/* Source is 1x1 (constant) repeat pattern? */
 			if ((1 == pPictureSrc->pDrawable->width) &&
 				(1 == pPictureSrc->pDrawable->height)) {
 
 				z160_setup_blend_const_masked(
-					gpuContext,
+					fPtr->gpuContext,
 					z160BlendOp,
 					&z160BufferSrc,
 					&z160BufferMask);
 
 				fPtr->gpuOpSetup = TRUE;
 			}
-
 		/* Simple (source IN mask) blend */
 		} else {
-
 			z160_setup_blend_image_masked(
-				gpuContext,
+				fPtr->gpuContext,
 				z160BlendOp,
 				&z160BufferSrc,
 				&z160BufferMask);
 
 			fPtr->gpuOpSetup = TRUE;
 		}
-
 	/* Source only (no mask) blend */
 	} else {
-
 		/* Repeating source (pattern)? */
 		if (pPictureSrc->repeat) {
-
 			/* Source is 1x1 (constant) repeat pattern? */
 			if ((1 == pPictureSrc->pDrawable->width) &&
 				(1 == pPictureSrc->pDrawable->height)) {
 
 				z160_setup_blend_const(
-					gpuContext,
+					fPtr->gpuContext,
 					z160BlendOp,
 					&z160BufferSrc);
 
 				fPtr->gpuOpSetup = TRUE;
-
 			/* Source is arbitrary sized repeat pattern? */
 			} else {
-
 #if 0
 // Disabled until libz160 can support larger intermediate packet buffer.
 				z160_setup_blend_pattern(
-					gpuContext,
+					fPtr->gpuContext,
 					z160BlendOp,
 					&z160BufferSrc);
 
 				fPtr->gpuOpSetup = TRUE;
 #endif
 			}
-
 		/* Simple source blend */
 		} else {
-
-			z160_setup_blend_image(gpuContext, z160BlendOp, &z160BufferSrc);
+			z160_setup_blend_image(fPtr->gpuContext, z160BlendOp, &z160BufferSrc);
 			fPtr->gpuOpSetup = TRUE;
 		}
 	}
@@ -2182,18 +2085,12 @@ Z160EXAComposite(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Access the GPU */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return;
-	}
-
 	/* Perform rectangle render based on setup in PrepareComposite */
-	switch (z160_get_setup(gpuContext)) {
+	switch (z160_get_setup(fPtr->gpuContext)) {
 
 		case Z160_SETUP_BLEND_IMAGE:
 			z160_blend_image_rect(
-				gpuContext,
+				fPtr->gpuContext,
 				dstX, dstY,
 				width, height,
 				srcX, srcY);
@@ -2201,7 +2098,7 @@ Z160EXAComposite(
 
 		case Z160_SETUP_BLEND_IMAGE_MASKED:
 			z160_blend_image_masked_rect(
-				gpuContext,
+				fPtr->gpuContext,
 				dstX, dstY,
 				width, height,
 				srcX, srcY,
@@ -2210,14 +2107,14 @@ Z160EXAComposite(
 
 		case Z160_SETUP_BLEND_CONST:
 			z160_blend_const_rect(
-				gpuContext,
+				fPtr->gpuContext,
 				dstX, dstY,
 				width, height);
 			break;
 
 		case Z160_SETUP_BLEND_CONST_MASKED:
 			z160_blend_const_masked_rect(
-				gpuContext,
+				fPtr->gpuContext,
 				dstX, dstY,
 				width, height,
 				maskX, maskY);
@@ -2225,7 +2122,7 @@ Z160EXAComposite(
 
 		case Z160_SETUP_BLEND_PATTERN:
 			z160_blend_pattern_rect(
-				gpuContext,
+				fPtr->gpuContext,
 				dstX, dstY,
 				width, height,
 				srcX, srcY);
@@ -2259,13 +2156,7 @@ Z160EXADoneComposite(PixmapPtr pPixmapDst)
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
 	/* Flush pending operations to the GPU. */
-	/* Access the GPU */
-	void* gpuContext = Z160ContextGet(fPtr);
-	if (NULL == gpuContext) {
-		return;
-	}
-
-	z160_flush(gpuContext);
+	z160_flush(fPtr->gpuContext);
 
 	/* Update state. */
 	fPtr->gpuSynced = FALSE;
