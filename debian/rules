@@ -11,11 +11,11 @@ export ENABLE_TLSF_MALLOC=1
 
 include debian/xsfbs/xsfbs.mk
 
-CFLAGS = -Wall -g -I/usr/src/linux-headers-2.6.31.14.14-efikamx/include
+CFLAGS = -Wall -g -I/usr/src/linux-headers-2.6.31.14.17-efikasb/include
 ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
 else
-	CFLAGS += -O3 -finline
+	CFLAGS += -O2 -finline
 endif
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
 	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
