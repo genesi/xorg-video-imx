@@ -1267,51 +1267,13 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 	int width = x2 - x1;
 	int height = y2 - y1;
 
-	/* Determine number of pixels in operation */
-//	unsigned opPixels = width * height;
-
-	/* Flag set to accelerate when operation involves minimum number of pixels. */
-	/* Or a previous acceleration was started and not yet synced to its completion. */
-//	Bool accel = (opPixels >= IMX_EXA_MIN_PIXEL_AREA_SOLID) || !fPtr->gpuSynced;
-	Bool accel = TRUE;
-
-	/* Need to prepare for software fallback solid fill? */
-	if (!accel && (NULL == fPtr->pGC)) {
-
-		/* Prepare target pixmap for CPU access */
-		Z160EXAPreparePipelinedAccess(fPtr->pPixmapDst, EXA_PREPARE_DEST);
-
-		/* Create scratch graphics context */
-		fPtr->pGC = GetScratchGC(fPtr->pPixmapDst->drawable.depth,
-						fPtr->pPixmapDst->drawable.pScreen);
-
-		/* Change the graphics context properties based on the PrepareSolid parameters. */
-		CARD32 parms[3] = {fPtr->solidALU, fPtr->solidPlaneMask, fPtr->solidColor};
-		dixChangeGC(NullClient, fPtr->pGC, GCFunction | GCPlaneMask | GCForeground, parms, NULL);
-
-		/* Make sure the graphics context is properly setup. */
-		ValidateGC(&fPtr->pPixmapDst->drawable, fPtr->pGC);
-
-	/* Need to prepare the GPU for accelerated solid fill? */
-	} else if (accel && !fPtr->gpuOpSetup) {
-
+	if (!fPtr->gpuOpSetup) {
 		z160_setup_buffer_target(fPtr->gpuContext, &fPtr->z160BufferDst);
 		z160_setup_fill_solid(fPtr->gpuContext, fPtr->z160Color);
 
 		fPtr->gpuOpSetup = TRUE;
 	}
-
-
-	/* Perform software fallback solid fill? */
-	if (!accel) {
-
-		fbFill(&fPtr->pPixmapDst->drawable, fPtr->pGC, x1, y1, width, height);
-
-	/* Perform GPU accelerated solid fill? */
-	} else {
-
-		z160_fill_solid_rect(fPtr->gpuContext, x1, y1, width, height);
-	}
+	z160_fill_solid_rect(fPtr->gpuContext, x1, y1, width, height);
 
 #if IMX_EXA_DEBUG_SOLID 
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO,
@@ -2412,6 +2374,8 @@ Bool IMX_EXA_ScreenInit(int scrnIndex, ScreenPtr pScreen)
 #if IMX_EXA_ENABLE_HANDLES_PIXMAPS
 		/* For driver pixmap allocation. */
 		imxPtr->exaDriverPtr->flags |= EXA_HANDLES_PIXMAPS;
+		imxPtr->exaDriverPtr->flags |= EXA_SUPPORTS_PREPARE_AUX;
+		imxPtr->exaDriverPtr->flags |= EXA_SUPPORTS_OFFSCREEN_OVERLAPS;
 
 		imxPtr->exaDriverPtr->CreatePixmap2 = Z160EXACreatePixmap2;
 		imxPtr->exaDriverPtr->DestroyPixmap = Z160EXADestroyPixmap;
