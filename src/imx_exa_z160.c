@@ -1392,6 +1392,12 @@ Z160EXAPrepareCopy(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
+	/* Access GPU context */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return FALSE;
+	}
+
 	/* Determine the bits-per-pixels for src and dst pixmaps. */
 	int dstPixmapBitsPerPixel = pPixmapDst->drawable.bitsPerPixel;
 	int srcPixmapBitsPerPixel = pPixmapSrc->drawable.bitsPerPixel;
@@ -1815,14 +1821,14 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 				pPictureSrc->pDrawable->height,
 				(NULL != pPictureSrc->transform) ? "T" : "",
 				PICT_FORMAT_BPP(pPictureSrc->format),
-				Z160GetPictureByTypeName(pPictureSrc),
+				Z160GetPictureTypeName(pPictureSrc),
 				PICT_FORMAT_A(pPictureSrc->format),
 				PICT_FORMAT_R(pPictureSrc->format),
 				PICT_FORMAT_G(pPictureSrc->format),
 				PICT_FORMAT_B(pPictureSrc->format),
 				op,
 				PICT_FORMAT_BPP(pPictureDst->format),
-				Z160GetPictureByTypeName(pPictureDst),
+				Z160GetPictureTypeName(pPictureDst),
 				PICT_FORMAT_A(pPictureDst->format),
 				PICT_FORMAT_R(pPictureDst->format),
 				PICT_FORMAT_G(pPictureDst->format),
