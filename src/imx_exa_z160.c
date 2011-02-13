@@ -1,24 +1,24 @@
 /*
- * Copyright (C) 2009-2010 Freescale Semiconductor, Inc.  All Rights Reserved.
- * 
+ * Copyright (C) 2009-2011 Freescale Semiconductor, Inc.  All Rights Reserved.
+ *
  * Permission is hereby granted, free of charge, to any person
- * obtaining a copy of this software and associated documentation 
- * files (the "Software"), to deal in the Software without 
- * restriction, including without limitation the rights to use, copy, 
- * modify, merge, publish, distribute, sublicense, and/or sell copies 
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
  * of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
  * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN 
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
 
@@ -32,9 +32,6 @@
 
 /* Set if handles pixmap allocation and migration, i.e, EXA_HANDLES_PIXMAPS */
 #define	IMX_EXA_ENABLE_HANDLES_PIXMAPS	(1 && (IMX_EXA_VERSION_COMPILED >= IMX_EXA_VERSION(2,5,0)))
-
-#define	IMX_EXA_ENABLE_SOLID		1	/* solid fill acceleration? */
-#define	IMX_EXA_ENABLE_EXA_INTERNAL	0	/* EXA code is in this driver */
 
 /* Set minimum size (pixel area) for accelerating operations. */
 #define	IMX_EXA_MIN_PIXEL_AREA_SOLID		0
@@ -51,7 +48,6 @@
 #define	IMX_EXA_DEBUG_PREPARE_COPY	(0 && IMX_EXA_DEBUG_MASTER)
 #define	IMX_EXA_DEBUG_COPY		(0 && IMX_EXA_DEBUG_MASTER)
 #define	IMX_EXA_DEBUG_CHECK_COMPOSITE	(0 && IMX_EXA_DEBUG_MASTER)
-#define	IMX_EXA_DEBUG_GPU_IDLE_TIME	(0 && IMX_EXA_DEBUG_MASTER)
 
 #if IMX_EXA_DEBUG_MASTER
 #include <errno.h>
@@ -96,10 +92,6 @@ typedef struct _IMXEXARec {
 	/* Flag set if GPU has been setup for solid, copy, or */
 	/* composite operation. */
 	Bool				gpuOpSetup;
-
-	/* Flag set if solid/copy/composite Prepare has been called and */
-	/* operation is completed (and flag cleared) when Done called. */
-	Bool				gpuOpBusy;
 
 	/* Graphics context for software fallback in solid/copy/composite */
 	GCPtr				pGC;
@@ -211,7 +203,7 @@ void IMX_EXA_GetRec(ScrnInfoPtr pScrn)
 	if (NULL != imxPtr->exaDriverPrivate) {
 		return;
 	}
-	
+
 	imxPtr->exaDriverPrivate = xnfcalloc(sizeof(IMXEXARec), 1);
 
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
@@ -220,7 +212,6 @@ void IMX_EXA_GetRec(ScrnInfoPtr pScrn)
 
 	fPtr->gpuSynced = FALSE;
 	fPtr->gpuOpSetup = FALSE;
-	fPtr->gpuOpBusy = FALSE;
 
 	fPtr->savePixmapPtr[EXA_PREPARE_DEST] = NULL;
 	fPtr->savePixmapPtr[EXA_PREPARE_SRC] = NULL;
@@ -709,20 +700,9 @@ Z160ContextGet(IMXEXAPtr fPtr)
 		/* Other initialization. */
 		fPtr->gpuSynced = FALSE;
 		fPtr->gpuOpSetup = FALSE;
-		fPtr->gpuOpBusy = FALSE;
 	}
 
 	return fPtr->gpuContext;
-}
-
-static inline void
-Z160MarkOperationBusy(IMXEXAPtr fPtr, Bool busy)
-{
-	fPtr->gpuOpBusy = busy;
-
-	if (!busy) {
-		// Nothing to do
-	}
 }
 
 static void
@@ -738,7 +718,7 @@ Z160Sync(IMXEXAPtr fPtr)
 	if (NULL == fPtr->gpuContext) {
 		return;
 	}
-	
+
 	/* Was there a GPU operation since the last sync? */
 	if (!fPtr->gpuSynced) {
 
@@ -762,7 +742,6 @@ Z160Sync(IMXEXAPtr fPtr)
 
 		/* Update state */
 		fPtr->gpuSynced = TRUE;
-		Z160MarkOperationBusy(fPtr, FALSE);
 	}
 }
 
@@ -1132,11 +1111,6 @@ Z160EXAFinishAccess(PixmapPtr pPixmap, int index)
 static Bool
 Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
 {
-	/* Do we even accelerate solid fill? */
-	if (! IMX_EXA_ENABLE_SOLID) {
-		return FALSE;
-	}
-
 	/* Make sure pixmap is defined. */
 	if (NULL == pPixmap) {
 		return FALSE;
@@ -1194,6 +1168,12 @@ Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
 		return FALSE;
 	}
 
+	/* Access GPU context */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return FALSE;
+	}
+
 	/* Only 8, 16, and 32-bit pixmaps are supported. */
 	/* Associate a pixel format which is required for configuring */
 	/* the Z160.  It does not matter what format is chosen as long as it */
@@ -1237,7 +1217,6 @@ Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
 
 	/* GPU setup deferred */
 	fPtr->gpuOpSetup = FALSE;
-	Z160MarkOperationBusy(fPtr, TRUE);
 
 	/* Remember the parameters passed in */
 	fPtr->pPixmapDst = pPixmap;
@@ -1257,6 +1236,12 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 	/* Access driver specific data */
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
+
+	/* Access GPU context */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return;
+	}
 
 	/* Nothing to unless rectangle has area. */
 	if ((x1 >= x2) || (y1 >= y2)) {
@@ -1333,7 +1318,6 @@ Z160EXADoneSolid(PixmapPtr pPixmap)
 		/* Update state. */
 		fPtr->gpuSynced = FALSE;
 		fPtr->gpuOpSetup = FALSE;
-		Z160MarkOperationBusy(fPtr, FALSE);
 	}
 
 	/* Release graphics context used for software fallback? */
@@ -1471,7 +1455,6 @@ Z160EXAPrepareCopy(
 
 	/* GPU setup deferred */
 	fPtr->gpuOpSetup = FALSE;
-	Z160MarkOperationBusy(fPtr, TRUE);
 
 	/* Remember the parameters passed in */
 	fPtr->pPixmapDst = pPixmapDst;
@@ -1553,16 +1536,21 @@ Z160EXADoneCopy(PixmapPtr pPixmapDst)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
+	/* Access the GPU */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return;
+	}
+
 	/* Finalize any GPU operations if any where used */
 	if (fPtr->gpuOpSetup) {
 
 		/* Flush pending operations to the GPU. */
-		z160_flush(fPtr->gpuContext);
+		z160_flush(gpuContext);
 
 		/* Update state */
 		fPtr->gpuSynced = FALSE;
 		fPtr->gpuOpSetup = FALSE;
-		Z160MarkOperationBusy(fPtr, FALSE);
 	}
 
 	/* Release graphics context used for software fallback? */
@@ -1592,8 +1580,28 @@ static Z160_BLEND Z160SetupBlendOpTable[] = {
 	Z160_BLEND_ADD,		/* 12 = PictOpAdd */
 	Z160_BLEND_UNKNOWN	/* 13 = PictOpSaturate, PictOpMaximum */
 };
-static int NumZ160SetupBlendOps = 
+static int NumZ160SetupBlendOps =
 	sizeof(Z160SetupBlendOpTable) / sizeof(Z160SetupBlendOpTable[0]);
+
+#if IMX_EXA_DEBUG_CHECK_COMPOSITE
+
+static const char*
+Z160GetPictureTypeName(PicturePtr pPicture)
+{
+	switch(PICT_FORMAT_TYPE(pPicture->format)) {
+		case PICT_TYPE_OTHER:	return "other";
+		case PICT_TYPE_A:	return "alpha";
+		case PICT_TYPE_ARGB:	return "argb";
+		case PICT_TYPE_ABGR:	return "abgr";
+		case PICT_TYPE_COLOR:	return "color";
+		case PICT_TYPE_GRAY:	return "gray";
+		case PICT_TYPE_BGRA:	return "bgra";
+		default:		return "???";
+	}
+}
+
+#endif
+
 
 
 /*
@@ -1637,10 +1645,31 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 	PixmapPtr pPixmapSrc = Z160EXAGetPicturePixmap(pPictureSrc);
 	PixmapPtr pPixmapMask = Z160EXAGetPicturePixmap(pPictureMask);
 
-	/* Cannot perform blend unless screens associated with src and dst pictures are same. */
-	if ((NULL == pPixmapSrc) || (NULL == pPixmapDst) ||
-		(pPixmapSrc->drawable.pScreen->myNum != pPixmapDst->drawable.pScreen->myNum)) {
+	/* Cannot perform blend if there is no target pixmap. */
+	if (NULL == pPixmapDst) {
+		return FALSE;
+	}
 
+	/* Access screen associated with dst pixmap (same screen as for src pixmap). */
+	ScrnInfoPtr pScrn = xf86Screens[pPixmapDst->drawable.pScreen->myNum];
+
+	/* Check the number of entities, and fail if it isn't one. */
+	if (pScrn->numEntities != 1) {
+
+		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+			"Z160EXACheckComposite called with number of screen entities (%d) not 1\n",
+			pScrn->numEntities);
+		return FALSE;
+	}
+
+	/* Cannot perform blend if there is no source pixmap. */
+	if (NULL == pPixmapSrc) {
+		return FALSE;
+	}
+
+	/* Cannot perform blend unless screens associated with src and dst pictures are same. */
+	if ((pPixmapSrc->drawable.pScreen->myNum !=
+		pPixmapDst->drawable.pScreen->myNum)) {
 		return FALSE;
 	}
 
@@ -1688,18 +1717,6 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 		}*/
 	}
 
-	/* Access screen associated with dst pixmap (same screen as for src pixmap). */
-	ScrnInfoPtr pScrn = xf86Screens[pPixmapDst->drawable.pScreen->myNum];
-
-	/* Check the number of entities, and fail if it isn't one. */
-	if (pScrn->numEntities != 1) {
-
-		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-			"Z160EXACheckComposite called with number of screen entities (%d) not 1\n",
-			pScrn->numEntities);
-		return FALSE;
-	}
-
 	/* Reset this variable if cannot support composite. */
 	Bool canComposite = TRUE;
 
@@ -1727,7 +1744,6 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 	/* Determine Z160 config that matches color format used in mask picture. */
 	Z160Buffer z160BufferMask;
 	Bool z160BufferMaskDefined = FALSE;
-	/* Check if mask picture is defined. */
 	if (NULL != pPictureMask) {
 
 		z160BufferMaskDefined = Z160GetPictureConfig(pScrn, pPictureMask, &z160BufferMask);
@@ -1735,46 +1751,25 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 			canComposite = FALSE;
 		}
 	}
-	
-	/* If the target has no color channels, then make sure the source and optional */
-	/* also do not have any color channels. */
-	if (z160BufferDstDefined && (0 == PICT_FORMAT_RGB(pPictureDst->format))) {
 
-		if (z160BufferSrcDefined && (0 != PICT_FORMAT_RGB(pPictureSrc->format))) {
-			canComposite = FALSE;
-		}
-		if (z160BufferMaskDefined && (0 != PICT_FORMAT_RGB(pPictureMask->format))) {
-			canComposite = FALSE;
-		}
-	}
-
-	/* Do not support masks that have color channel data if the picture is not */
-	/* configured for component alpha. */
+	/* Do not accelerate masks that do not have an alpha channel. */
 	if (z160BufferMaskDefined) {
 		if (0 == PICT_FORMAT_A(pPictureMask->format)) {
 			canComposite = FALSE;
 		}
 	}
 
-	/* Check if source picture has a transform. */
+	/* Do not accelerate sources with a transform. */
 	if (NULL != pPictureSrc->transform) {
 		canComposite = FALSE;
 	}
 
-	/* Check if mask picture has a transform. */
+	/* Do not accelerate masks, if defined, that have a transform. */
 	if ((NULL != pPictureMask) && (NULL != pPictureMask->transform)) {
 		canComposite = FALSE;
 	}
 
-	/* Can perform repeating source picture (pattern) blend when a mask */
-	/* is used as long as the source picture is 1x1 (a constant). */
-	if (pPictureSrc->repeat && (NULL != pPictureMask) &&
-		((1 != pPictureSrc->pDrawable->width) || (1 != pPictureSrc->pDrawable->height))) {
-
-		canComposite = FALSE;
-	}
-
-	/* Cannot perform blend if mask picture has repeat set. */
+	/* Do not accelerate when mask, if defined, is repeating. */
 	if ((NULL != pPictureMask) && pPictureMask->repeat) {
 		canComposite = FALSE;
 	}
@@ -1788,20 +1783,20 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 		if (NULL == pPictureMask) {
 
 			xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-				"Z160EXACheckComposite not support: SRC(%s%dx%d,%s%d-%d:%d%d%d%d) op=%d DST(%d-%d:%d%d%d%d)\n",
+				"Z160EXACheckComposite not support: SRC(%s%dx%d,%s%d%s:%d%d%d%d) op=%d DST(%d%s:%d%d%d%d)\n",
 				pPictureSrc->repeat ? "R" : "",
 				pPictureSrc->pDrawable->width,
 				pPictureSrc->pDrawable->height,
 				(NULL != pPictureSrc->transform) ? "T" : "",
-				PICT_FORMAT_TYPE(pPictureSrc->format),
 				PICT_FORMAT_BPP(pPictureSrc->format),
+				Z160GetPictureByTypeName(pPictureSrc),
 				PICT_FORMAT_A(pPictureSrc->format),
 				PICT_FORMAT_R(pPictureSrc->format),
 				PICT_FORMAT_G(pPictureSrc->format),
 				PICT_FORMAT_B(pPictureSrc->format),
 				op,
-				PICT_FORMAT_TYPE(pPictureDst->format),
 				PICT_FORMAT_BPP(pPictureDst->format),
+				Z160GetPictureByTypeName(pPictureDst),
 				PICT_FORMAT_A(pPictureDst->format),
 				PICT_FORMAT_R(pPictureDst->format),
 				PICT_FORMAT_G(pPictureDst->format),
@@ -1812,13 +1807,13 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 		} else {
 
 			xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-				"Z160EXACheckComposite not support: SRC(%s%dx%d,%s%d-%d:%d%d%d%d) MASK(%s%dx%d,%s%d-%d:%s%d%d%d%d) op=%d DST(%d-%d:%d%d%d%d)\n",
+				"Z160EXACheckComposite not support: SRC(%s%dx%d,%s%d%s:%d%d%d%d) MASK(%s%dx%d,%s%d%s:%s%d%d%d%d) op=%d DST(%d%s:%d%d%d%d)\n",
 				pPictureSrc->repeat ? "R" : "",
 				pPictureSrc->pDrawable->width,
 				pPictureSrc->pDrawable->height,
 				(NULL != pPictureSrc->transform) ? "T" : "",
-				PICT_FORMAT_TYPE(pPictureSrc->format),
 				PICT_FORMAT_BPP(pPictureSrc->format),
+				Z160GetPictureTypeName(pPictureSrc),
 				PICT_FORMAT_A(pPictureSrc->format),
 				PICT_FORMAT_R(pPictureSrc->format),
 				PICT_FORMAT_G(pPictureSrc->format),
@@ -1827,16 +1822,16 @@ Z160EXACheckComposite(int op, PicturePtr pPictureSrc, PicturePtr pPictureMask, P
 				pPictureMask->pDrawable->width,
 				pPictureMask->pDrawable->height,
 				(NULL != pPictureMask->transform) ? "T" : "",
-				PICT_FORMAT_TYPE(pPictureMask->format),
 				PICT_FORMAT_BPP(pPictureMask->format),
+				Z160GetPictureTypeName(pPictureMask),
 				pPictureMask->componentAlpha ? "C" : "",
 				PICT_FORMAT_A(pPictureMask->format),
 				PICT_FORMAT_R(pPictureMask->format),
 				PICT_FORMAT_G(pPictureMask->format),
 				PICT_FORMAT_B(pPictureMask->format),
 				op,
-				PICT_FORMAT_TYPE(pPictureDst->format),
 				PICT_FORMAT_BPP(pPictureDst->format),
+				Z160GetPictureTypeName(pPictureDst),
 				PICT_FORMAT_A(pPictureDst->format),
 				PICT_FORMAT_R(pPictureDst->format),
 				PICT_FORMAT_G(pPictureDst->format),
@@ -1881,11 +1876,17 @@ Z160EXAPrepareComposite(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
+	/* Access GPU context */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return FALSE;
+	}
+
 	/* Map the Xrender blend op into the Z160 blend op. */
 	Z160_BLEND z160BlendOp = Z160SetupBlendOpTable[op];
 
 	/* Setup the target buffer */
-	z160_setup_buffer_target(fPtr->gpuContext, &z160BufferDst);
+	z160_setup_buffer_target(gpuContext, &z160BufferDst);
 
 	/* Mask blend? */
 	fPtr->gpuOpSetup = FALSE;
@@ -1899,21 +1900,31 @@ Z160EXAPrepareComposite(
 		/* Blend repeating source using a mask */
 		if (pPictureSrc->repeat) {
 			/* Source is 1x1 (constant) repeat pattern? */
-			if ((1 == pPictureSrc->pDrawable->width) &&
-				(1 == pPictureSrc->pDrawable->height)) {
+			if (Z160IsDrawablePixelOnly(pPictureSrc->pDrawable)) {
 
 				z160_setup_blend_const_masked(
-					fPtr->gpuContext,
+					gpuContext,
 					z160BlendOp,
 					&z160BufferSrc,
 					&z160BufferMask);
 
 				fPtr->gpuOpSetup = TRUE;
-			}
+			/* Source is arbitrary sized repeat pattern? */
+			} else {
+
+				z160_setup_blend_pattern_masked(
+					gpuContext,
+ 					z160BlendOp,
+ 					&z160BufferSrc,
+ 					&z160BufferMask);
+
+ 				fPtr->gpuOpSetup = TRUE;
+ 			}
+
 		/* Simple (source IN mask) blend */
 		} else {
 			z160_setup_blend_image_masked(
-				fPtr->gpuContext,
+				gpuContext,
 				z160BlendOp,
 				&z160BufferSrc,
 				&z160BufferMask);
@@ -1925,38 +1936,32 @@ Z160EXAPrepareComposite(
 		/* Repeating source (pattern)? */
 		if (pPictureSrc->repeat) {
 			/* Source is 1x1 (constant) repeat pattern? */
-			if ((1 == pPictureSrc->pDrawable->width) &&
-				(1 == pPictureSrc->pDrawable->height)) {
+			if (Z160IsDrawablePixelOnly(pPictureSrc->pDrawable)) {
 
 				z160_setup_blend_const(
-					fPtr->gpuContext,
+					gpuContext,
 					z160BlendOp,
 					&z160BufferSrc);
 
 				fPtr->gpuOpSetup = TRUE;
 			/* Source is arbitrary sized repeat pattern? */
 			} else {
-#if 0
-// Disabled until libz160 can support larger intermediate packet buffer.
 				z160_setup_blend_pattern(
-					fPtr->gpuContext,
+					gpuContext,
 					z160BlendOp,
 					&z160BufferSrc);
 
 				fPtr->gpuOpSetup = TRUE;
-#endif
 			}
 		/* Simple source blend */
 		} else {
-			z160_setup_blend_image(fPtr->gpuContext, z160BlendOp, &z160BufferSrc);
+			z160_setup_blend_image(gpuContext, z160BlendOp, &z160BufferSrc);
 			fPtr->gpuOpSetup = TRUE;
 		}
 	}
 
 	/* Note if the composite operation is being accelerated. */
 	if (fPtr->gpuOpSetup) {
-
-		Z160MarkOperationBusy(fPtr, TRUE);
 		return TRUE;
 	}
 
@@ -1968,20 +1973,20 @@ Z160EXAPrepareComposite(
 	if (NULL == pPictureMask) {
 
 		xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-			"Z160EXAPrepareComposite not support: SRC(%s%dx%d,%s%d-%d:%d%d%d%d) op=%d DST(%d-%d:%d%d%d%d)\n",
+			"Z160EXAPrepareComposite not support: SRC(%s%dx%d,%s%d%s:%d%d%d%d) op=%d DST(%d%s:%d%d%d%d)\n",
 			pPictureSrc->repeat ? "R" : "",
 			pPictureSrc->pDrawable->width,
 			pPictureSrc->pDrawable->height,
 			(NULL != pPictureSrc->transform) ? "T" : "",
-			PICT_FORMAT_TYPE(pPictureSrc->format),
 			PICT_FORMAT_BPP(pPictureSrc->format),
+			Z160GetPictureTypeName(pPictureSrc),
 			PICT_FORMAT_A(pPictureSrc->format),
 			PICT_FORMAT_R(pPictureSrc->format),
 			PICT_FORMAT_G(pPictureSrc->format),
 			PICT_FORMAT_B(pPictureSrc->format),
 			op,
-			PICT_FORMAT_TYPE(pPictureDst->format),
 			PICT_FORMAT_BPP(pPictureDst->format),
+			Z160GetPictureTypeName(pPictureDst),
 			PICT_FORMAT_A(pPictureDst->format),
 			PICT_FORMAT_R(pPictureDst->format),
 			PICT_FORMAT_G(pPictureDst->format),
@@ -1992,13 +1997,13 @@ Z160EXAPrepareComposite(
 	} else {
 
 		xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-			"Z160EXAPrepareComposite not support: SRC(%s%dx%d,%s%d-%d:%d%d%d%d) MASK(%s%dx%d,%s%d-%d:%s%d%d%d%d) op=%d DST(%d-%d:%d%d%d%d)\n",
+			"Z160EXAPrepareComposite not support: SRC(%s%dx%d,%s%d%s:%d%d%d%d) MASK(%s%dx%d,%s%d%s:%s%d%d%d%d) op=%d DST(%d%s:%d%d%d%d)\n",
 			pPictureSrc->repeat ? "R" : "",
 			pPictureSrc->pDrawable->width,
 			pPictureSrc->pDrawable->height,
 			(NULL != pPictureSrc->transform) ? "T" : "",
-			PICT_FORMAT_TYPE(pPictureSrc->format),
 			PICT_FORMAT_BPP(pPictureSrc->format),
+			Z160GetPictureTypeName(pPictureSrc),
 			PICT_FORMAT_A(pPictureSrc->format),
 			PICT_FORMAT_R(pPictureSrc->format),
 			PICT_FORMAT_G(pPictureSrc->format),
@@ -2007,16 +2012,16 @@ Z160EXAPrepareComposite(
 			pPictureMask->pDrawable->width,
 			pPictureMask->pDrawable->height,
 			(NULL != pPictureMask->transform) ? "T" : "",
-			PICT_FORMAT_TYPE(pPictureMask->format),
 			PICT_FORMAT_BPP(pPictureMask->format),
+			Z160GetPictureTypeName(pPictureMask),
 			pPictureMask->componentAlpha ? "C" : "",
 			PICT_FORMAT_A(pPictureMask->format),
 			PICT_FORMAT_R(pPictureMask->format),
 			PICT_FORMAT_G(pPictureMask->format),
 			PICT_FORMAT_B(pPictureMask->format),
 			op,
-			PICT_FORMAT_TYPE(pPictureDst->format),
 			PICT_FORMAT_BPP(pPictureDst->format),
+			Z160GetPictureTypeName(pPictureDst),
 			PICT_FORMAT_A(pPictureDst->format),
 			PICT_FORMAT_R(pPictureDst->format),
 			PICT_FORMAT_G(pPictureDst->format),
@@ -2047,12 +2052,18 @@ Z160EXAComposite(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
+	/* Access the GPU */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return;
+	}
+
 	/* Perform rectangle render based on setup in PrepareComposite */
-	switch (z160_get_setup(fPtr->gpuContext)) {
+	switch (z160_get_setup(gpuContext)) {
 
 		case Z160_SETUP_BLEND_IMAGE:
 			z160_blend_image_rect(
-				fPtr->gpuContext,
+				gpuContext,
 				dstX, dstY,
 				width, height,
 				srcX, srcY);
@@ -2060,7 +2071,7 @@ Z160EXAComposite(
 
 		case Z160_SETUP_BLEND_IMAGE_MASKED:
 			z160_blend_image_masked_rect(
-				fPtr->gpuContext,
+				gpuContext,
 				dstX, dstY,
 				width, height,
 				srcX, srcY,
@@ -2069,14 +2080,14 @@ Z160EXAComposite(
 
 		case Z160_SETUP_BLEND_CONST:
 			z160_blend_const_rect(
-				fPtr->gpuContext,
+				gpuContext,
 				dstX, dstY,
 				width, height);
 			break;
 
 		case Z160_SETUP_BLEND_CONST_MASKED:
 			z160_blend_const_masked_rect(
-				fPtr->gpuContext,
+				gpuContext,
 				dstX, dstY,
 				width, height,
 				maskX, maskY);
@@ -2084,12 +2095,19 @@ Z160EXAComposite(
 
 		case Z160_SETUP_BLEND_PATTERN:
 			z160_blend_pattern_rect(
-				fPtr->gpuContext,
+				gpuContext,
 				dstX, dstY,
 				width, height,
 				srcX, srcY);
 			break;
-
+		case Z160_SETUP_BLEND_PATTERN_MASKED:
+			z160_blend_pattern_masked_rect(
+				gpuContext,
+				dstX, dstY,
+				width, height,
+				srcX, srcY,
+				maskX, maskY);
+			break;
 		default:
 			return;
 	}
@@ -2117,13 +2135,17 @@ Z160EXADoneComposite(PixmapPtr pPixmapDst)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	/* Flush pending operations to the GPU. */
-	z160_flush(fPtr->gpuContext);
+	/* Access the GPU */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return;
+	}
+
+	z160_flush(gpuContext);
 
 	/* Update state. */
 	fPtr->gpuSynced = FALSE;
 	fPtr->gpuOpSetup = FALSE;
-	Z160MarkOperationBusy(fPtr, FALSE);
 }
 
 static Bool
