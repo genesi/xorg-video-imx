@@ -378,8 +378,20 @@ IMX_EXA_GetPixmapProperties(
 	return TRUE;
 }
 
-static
-Bool
+static inline Bool
+Z160IsDrawablePixelOnly(DrawablePtr pDrawable)
+{
+	if ((1 == pDrawable->width) && (1 == pDrawable->height)) {
+
+		return TRUE;
+
+	} else {
+
+		return FALSE;
+	}
+}
+
+static Bool
 Z160CanAcceleratePixmapRectangles(PixmapPtr pPixmap)
 {
 	/* Do not check pixmap size because EXA may want to call to */
