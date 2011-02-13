@@ -715,7 +715,8 @@ Z160Sync(IMXEXAPtr fPtr)
 	/* If there is no GPU context, then no reason to sync. */
 	/* Do not use Z160ContextGet because it will regain */
 	/* access if we currently do not have it (because idle). */
-	if (NULL == fPtr->gpuContext) {
+	void *gpuContext = fPtr->gpuContext;
+	if (NULL == gpuContext) {
 		return;
 	}
 
@@ -738,7 +739,7 @@ Z160Sync(IMXEXAPtr fPtr)
 #endif
 
 		/* Do the wait */
-		z160_sync(fPtr->gpuContext);
+		z160_sync(gpuContext);
 
 		/* Update state */
 		fPtr->gpuSynced = TRUE;
@@ -757,7 +758,7 @@ Z160EXAPreparePipelinedAccess(PixmapPtr pPixmap, int index)
 
 	/* Remember previous setting so it can be restored in *FinishPipelinedAccess */
 	fPtr->savePixmapPtr[index] = pPixmap->devPrivate.ptr;
-	
+
 	/* Forces a real devPrivate.ptr for hidden pixmaps, so that they */
 	/* can be passed down into fb* funtions. */
 	if (NULL == pPixmap->devPrivate.ptr) {
@@ -1253,21 +1254,21 @@ Z160EXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 	int height = y2 - y1;
 
 	if (!fPtr->gpuOpSetup) {
-		z160_setup_buffer_target(fPtr->gpuContext, &fPtr->z160BufferDst);
-		z160_setup_fill_solid(fPtr->gpuContext, fPtr->z160Color);
+		z160_setup_buffer_target(gpuContext, &fPtr->z160BufferDst);
+		z160_setup_fill_solid(gpuContext, fPtr->z160Color);
 
 		fPtr->gpuOpSetup = TRUE;
 	}
-	z160_fill_solid_rect(fPtr->gpuContext, x1, y1, width, height);
+	z160_fill_solid_rect(gpuContext, x1, y1, width, height);
 
-#if IMX_EXA_DEBUG_SOLID 
+#if IMX_EXA_DEBUG_SOLID
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 		"Z160EXASolid called with rect=(%d-%d,%d-%d)\n",
 		x1, x2, y1, y2);
 #endif
 
 #if IMX_EXA_DEBUG_INSTRUMENT_SIZES
-	const unsigned long size = 
+	const unsigned long size =
 		(unsigned long)(z160DstRect.width) * z160DstRect.height;
 
 	if (size < 100) {
@@ -1309,11 +1310,17 @@ Z160EXADoneSolid(PixmapPtr pPixmap)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
+        /* Access the GPU */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return;
+	}
+
 	/* Finalize any GPU operations if any where used */
 	if (fPtr->gpuOpSetup) {
 
 		/* Flush pending operations to the GPU. */
-		z160_flush(fPtr->gpuContext);
+		z160_flush(gpuContext);
 
 		/* Update state. */
 		fPtr->gpuSynced = FALSE;
@@ -1477,18 +1484,25 @@ Z160EXACopy(PixmapPtr pPixmapDst, int srcX, int srcY, int dstX, int dstY, int wi
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
+        /* Access the GPU */
+	void* gpuContext = Z160ContextGet(fPtr);
+	if (NULL == gpuContext) {
+		return;
+	}
+
+
 	if (!fPtr->gpuOpSetup) {
-		z160_setup_buffer_target(fPtr->gpuContext, &fPtr->z160BufferDst);
-		z160_setup_copy(fPtr->gpuContext, &fPtr->z160BufferSrc,
+		z160_setup_buffer_target(gpuContext, &fPtr->z160BufferDst);
+		z160_setup_copy(gpuContext, &fPtr->z160BufferSrc,
 					fPtr->copyDirX, fPtr->copyDirY);
 
 		fPtr->gpuOpSetup = TRUE;
 	}
 
-	z160_copy_rect(fPtr->gpuContext, dstX, dstY, width, height, srcX, srcY);
+	z160_copy_rect(gpuContext, dstX, dstY, width, height, srcX, srcY);
 
 #if IMX_EXA_DEBUG_INSTRUMENT_SIZES
-	const unsigned long size = 
+	const unsigned long size =
 		(unsigned long)(z160DstRect.width) * z160DstRect.height;
 
 	if (size < 100) {
