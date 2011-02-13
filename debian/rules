@@ -11,7 +11,7 @@ export ENABLE_TLSF_MALLOC=1
 
 include debian/xsfbs/xsfbs.mk
 
-CFLAGS = -Wall -g -I/usr/src/linux-headers-2.6.31.14.17-efikasb/include
+CFLAGS = -Wall -g -I/usr/src/linux-headers-2.6.31.14.17-efikamx/include
 ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
 else
