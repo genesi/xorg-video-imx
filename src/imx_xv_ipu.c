@@ -113,6 +113,7 @@ static XF86ImageRec MXImage[] =
 {
 	XVIMAGE_YUY2,
 	XVIMAGE_UYVY,
+	/* YV12 isn't in libipu yet */
 //	XVIMAGE_YV12,
 	XVIMAGE_I420,
 	/* NV12 */

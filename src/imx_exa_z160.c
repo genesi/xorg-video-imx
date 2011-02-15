@@ -381,14 +381,8 @@ IMX_EXA_GetPixmapProperties(
 static inline Bool
 Z160IsDrawablePixelOnly(DrawablePtr pDrawable)
 {
-	if ((1 == pDrawable->width) && (1 == pDrawable->height)) {
-
-		return TRUE;
-
-	} else {
-
-		return FALSE;
-	}
+	/* we only return true if both width & height are equal to 1, saves branching entirely) */
+	return (Bool)(0x00000001 & (1 == pDrawable->width & pDrawable->height));
 }
 
 static Bool
@@ -703,11 +697,6 @@ Z160ContextGet(IMXEXAPtr fPtr)
 			Z160ContextRelease(fPtr);
 			return NULL;
 		}
-
-#if IMX_EXA_DEBUG_GPU_IDLE_TIME
-		xf86DrvMsg(fPtr->scrnIndex, X_INFO,
-			"GPU was off for %.2lf secs\n", offTime / 1000.0);
-#endif
 
 		/* Other initialization. */
 		fPtr->gpuSynced = FALSE;
@@ -2303,8 +2292,6 @@ Z160EXAWaitMarker(ScreenPtr pScreen, int marker)
 Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn)
 {
 
-#if !IMX_EXA_ENABLE_EXA_INTERNAL
-
 	XF86ModReqInfo req;
 	int errmaj, errmin;
 	memset(&req, 0, sizeof(req));
@@ -2315,7 +2302,6 @@ Bool IMX_EXA_PreInit(ScrnInfoPtr pScrn)
 		LoaderErrorMsg(NULL, "exa", errmaj, errmin);
 		return FALSE;
 	}
-#endif
 
 	/* initialize state of Z160 data structures */
 	IMXPtr imxPtr = IMXPTR(pScrn);
