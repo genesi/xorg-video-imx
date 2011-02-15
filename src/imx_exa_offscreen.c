@@ -112,11 +112,7 @@ IMX_EXA_OffscreenMerge (IMXPtr imxPtr, ExaOffscreenArea *area)
 	area->next->prev = area;
     else
 	imxPtr->offScreenAreas->prev = area;
-#ifdef ENABLE_TLSF_MALLOC
-    tlsf_free (next);
-#else
     free (next);
-#endif
 
     imxPtr->numOffscreenAvailable--;
 }
@@ -410,11 +406,7 @@ IMX_EXA_OffscreenAlloc (ScreenPtr pScreen, int size, int align,
     /* save extra space in new area */
     if (real_size < area->size)
     {
-#ifdef ENABLE_TLSF_MALLOC
-	ExaOffscreenArea   *new_area = tlsf_malloc (sizeof (ExaOffscreenArea));
-#else
 	ExaOffscreenArea   *new_area = malloc (sizeof (ExaOffscreenArea));
-#endif
 	if (!new_area)
 	    return NULL;
 	new_area->base_offset = area->base_offset;
@@ -482,11 +474,7 @@ IMX_EXA_OffscreenInit (ScreenPtr pScreen)
 
     /* Allocate a big free area */
 
-#ifdef ENABLE_TLSF_MALLOC
-    area = tlsf_malloc (sizeof (ExaOffscreenArea));
-#else
     area = malloc (sizeof (ExaOffscreenArea));
-#endif
 
     if (!area)
 	return FALSE;
@@ -523,11 +511,7 @@ IMX_EXA_OffscreenFini (ScreenPtr pScreen)
     while ((area = imxPtr->offScreenAreas))
     {
 	imxPtr->offScreenAreas = area->next;
-#ifdef ENABLE_TLSF_MALLOC
-	tlsf_free (area);
-#else
 	free (area);
-#endif
     }
 }
 
