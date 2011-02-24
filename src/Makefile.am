@@ -25,12 +25,12 @@
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
 
 # Use these two lines to enable Xvideo support
-AM_CFLAGS = @XORG_CFLAGS@ -DRENDER -DCOMPOSITE -DMITSHM -DIMX_XVIDEO_ENABLE=1
-imx_drv_la_LDFLAGS = -module -avoid-version -lz160 -lipu
+#AM_CFLAGS = @XORG_CFLAGS@ -DRENDER -DCOMPOSITE -DMITSHM -DIMX_XVIDEO_ENABLE=1
+#imx_drv_la_LDFLAGS = -module -avoid-version -lz160 -lipu
 
 # Or use these two lines to disable Xvideo support
-#AM_CFLAGS = @XORG_CFLAGS@ -DRENDER -DCOMPOSITE -DMITSHM -DIMX_XVIDEO_ENABLE=0
-#imx_drv_la_LDFLAGS = -module -avoid-version -lz160
+AM_CFLAGS = @XORG_CFLAGS@ -DRENDER -DCOMPOSITE -DMITSHM -DIMX_XVIDEO_ENABLE=0
+imx_drv_la_LDFLAGS = -module -avoid-version -lz160
 
 imx_drv_la_LTLIBRARIES = imx_drv.la
 imx_drv_ladir = @moduledir@/drivers
