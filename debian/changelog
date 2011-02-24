@@ -1,16 +1,16 @@
-xserver-xorg-video-imx (1.11.02.00) maverick; urgency=low
+xserver-xorg-video-imx (1.0.0-20110213) maverick; urgency=low
 
   * optimizations
 
  -- Matt Sealey <matt@genesi-usa.com>  Sun, 13 Feb 2011 14:02:33 -0600
 
-xserver-xorg-video-imx (1.10.11.00) maverick; urgency=low
+xserver-xorg-video-imx (1.0.0-20101230) maverick; urgency=low
 
   * offscreen EXA pixmap support
 
  -- Matt Sealey <matt@genesi-usa.com>  Fri, 30 Dec 2010 14:21:09 -0600
 
-xserver-xorg-video-imx (1.10.10.00) maverick; urgency=low
+xserver-xorg-video-imx (1.0.0-20101216) maverick; urgency=low
 
   * X.org imx video driver for the iMX5 platform.
 
