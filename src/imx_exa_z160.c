@@ -2072,7 +2072,6 @@ Z160EXAComposite(
 				width, height,
 				srcX, srcY);
 			break;
-/*
 		case Z160_SETUP_BLEND_PATTERN_MASKED:
 			z160_blend_pattern_masked_rect(
 				fPtr->gpuContext,
@@ -2081,7 +2080,6 @@ Z160EXAComposite(
 				srcX, srcY,
 				maskX, maskY);
 			break;
-*/
 		default:
 			return;
 	}
