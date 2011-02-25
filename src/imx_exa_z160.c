@@ -1169,9 +1169,6 @@ Z160EXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
 		return FALSE;
 	}
 
-	if (fPtr->gpuContext == NULL)
-		return FALSE;
-
 	/* Only 8, 16, and 32-bit pixmaps are supported. */
 	/* Associate a pixel format which is required for configuring */
 	/* the Z160.  It does not matter what format is chosen as long as it */
@@ -1301,9 +1298,6 @@ Z160EXADoneSolid(PixmapPtr pPixmap)
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	if (fPtr->gpuContext == NULL)
-		return;
-
 	/* Finalize any GPU operations if any where used */
 	if (fPtr->gpuOpSetup) {
 
@@ -1367,9 +1361,6 @@ Z160EXAPrepareCopy(
 	/* Access driver specific data */
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
-
-	if (fPtr->gpuContext == NULL)
-		return FALSE;
 
 	/* Determine the bits-per-pixels for src and dst pixmaps. */
 	int dstPixmapBitsPerPixel = pPixmapDst->drawable.bitsPerPixel;
@@ -1475,8 +1466,6 @@ Z160EXACopy(PixmapPtr pPixmapDst, int srcX, int srcY, int dstX, int dstY, int wi
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	if (fPtr->gpuContext == NULL)
-		return;
 
 	if (!fPtr->gpuOpSetup) {
 		z160_setup_buffer_target(fPtr->gpuContext, &fPtr->z160BufferDst);
@@ -1536,9 +1525,6 @@ Z160EXADoneCopy(PixmapPtr pPixmapDst)
 	/* Access driver specific data */
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
-
-	if (fPtr->gpuContext == NULL)
-		return FALSE;
 
 	/* Finalize any GPU operations if any where used */
 	if (fPtr->gpuOpSetup) {
@@ -1874,9 +1860,6 @@ Z160EXAPrepareComposite(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	if (fPtr->gpuContext == NULL)
-		return FALSE;
-
 	/* Map the Xrender blend op into the Z160 blend op. */
 	Z160_BLEND z160BlendOp = Z160SetupBlendOpTable[op];
 
@@ -2047,9 +2030,6 @@ Z160EXAComposite(
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
 
-	if (fPtr->gpuContext == NULL)
-		return;
-
 	/* Perform rectangle render based on setup in PrepareComposite */
 	switch (z160_get_setup(fPtr->gpuContext)) {
 
@@ -2126,9 +2106,6 @@ Z160EXADoneComposite(PixmapPtr pPixmapDst)
 	/* Access driver specific data */
 	IMXPtr imxPtr = IMXPTR(pScrn);
 	IMXEXAPtr fPtr = IMXEXAPTR(imxPtr);
-
-	if (fPtr->gpuContext == NULL)
-		return;
 
 	z160_flush(fPtr->gpuContext);
 
