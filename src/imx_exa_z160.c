@@ -34,9 +34,9 @@
 #define	IMX_EXA_ENABLE_HANDLES_PIXMAPS	(1 && (IMX_EXA_VERSION_COMPILED >= IMX_EXA_VERSION(2,5,0)))
 
 /* Set minimum size (pixel area) for accelerating operations. */
-#define	IMX_EXA_MIN_PIXEL_AREA_SOLID		32
-#define	IMX_EXA_MIN_PIXEL_AREA_COPY		32
-#define	IMX_EXA_MIN_PIXEL_AREA_COMPOSITE	32
+#define	IMX_EXA_MIN_PIXEL_AREA_SOLID		64
+#define	IMX_EXA_MIN_PIXEL_AREA_COPY		64
+#define	IMX_EXA_MIN_PIXEL_AREA_COMPOSITE	64
 
 /* This flag must be enabled to perform any debug logging */
 #define IMX_EXA_DEBUG_MASTER		0
