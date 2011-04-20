@@ -1,3 +1,9 @@
+xserver-xorg-video-imx (1.1.0-20110420) maverick; urgency=low
+
+  * Update and cleanup
+
+ -- Matt Sealey <matt@genesi-usa.com>  Wed, 20 Apr 2011 12:04:09 -0600
+
 xserver-xorg-video-imx (1.0.0-20110228) maverick; urgency=low
 
   * reinstate minimum size checks for solid,area,composite operations.

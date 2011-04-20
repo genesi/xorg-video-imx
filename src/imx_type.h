@@ -55,16 +55,8 @@ typedef struct {
 	unsigned char*			fbmem;
 	int				fboff;
 	int				lineLength;
-	int				rotate;
-	Bool				shadowFB;
-	void				*shadow;
 	CloseScreenProcPtr		CloseScreen;
-	CreateScreenResourcesProcPtr	CreateScreenResources;
-	void				(*PointerMoved)(int index, int x, int y);
 	EntityInfoPtr			pEnt;
-	/* DGA info */
-	DGAModePtr			pDGAMode;
-	int				nDGAMode;
 	OptionInfoPtr			Options;
 
 #if IMX_XVIDEO_ENABLE

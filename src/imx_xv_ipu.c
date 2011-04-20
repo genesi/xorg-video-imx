@@ -113,8 +113,7 @@ static XF86ImageRec MXImage[] =
 {
 	XVIMAGE_YUY2,
 	XVIMAGE_UYVY,
-	/* YV12 isn't in libipu yet */
-//	XVIMAGE_YV12,
+	XVIMAGE_YV12, // requires 11.03 libipu
 	XVIMAGE_I420,
 	/* NV12 */
 	{ FOURCC_NV12, XvYUV, LSBFirst, {'N','V','1','2', \
@@ -481,7 +480,7 @@ static int MXSetupNewIPUTask(IMXPtr pFB,int ImageID)
 	TRACE("Output Parameters:\n");
 	pFB->output_para.width  = pFB->DstW;
 	pFB->output_para.height = pFB->DstH;
-	pFB->output_para.rot    = pFB->rotate;
+	pFB->output_para.rot    = 0; // none?
 	if (fb_var.bits_per_pixel == 24)
     		pFB->output_para.fmt = v4l2_fourcc('B', 'G', 'R', '3');
 	else
